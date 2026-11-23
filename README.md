@@ -26,18 +26,6 @@ query -> embed -> retrieve top-k recipes -> prompt -> local LLM (Ollama)
    ```
 4. Open `notebooks/pipeline.ipynb` and run the cells from the top.
 
-## Setup (Google Colab)
-
-Open `notebooks/pipeline.ipynb` in Colab, choose a T4 GPU runtime, and run the "Colab only" cell first.
-
-## Project structure
-
-```
-notebooks/pipeline.ipynb   main notebook
-data/                      local data (ignored by git)
-requirements.txt           Python packages
-```
-
 ## Team
 
 Borces, Del Rosario, Lansoy
