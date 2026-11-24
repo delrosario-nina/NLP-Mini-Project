@@ -56,6 +56,11 @@ class TestAliasMap(unittest.TestCase):
             "Maggi Magic Sarap": "maggi magic sarap",
             "Magic Sarap": "maggi magic sarap",
             "pork cube bouillon": "pork bouillon",
+            "basil leaves": "basil",
+            "ground cumin": "cumin",
+            "breadcrumbs": "bread crumbs",
+            "patola": "sponge gourd",
+            "sweet corn": "corn",
         }
         for text, expected in cases.items():
             with self.subTest(text=text):
