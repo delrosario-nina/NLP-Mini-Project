@@ -32,9 +32,12 @@ DISH = "chicken inasal"
 
 # Demo-only substitution ideas. These are illustrative, not learned from the dataset.
 SUBSTITUTIONS = {
+    # Keys are canonical ingredient names from data/processed/alias_map.json.
+    "annatto": "achuete seeds steeped in warm oil",
     "annatto oil": "achuete seeds steeped in warm oil",
     "annatto seed": "achuete seeds steeped in warm oil",
     "palm vinegar": "coconut vinegar or white vinegar",
+    "calamansi": "lemon juice",
     "calamansi juice": "lemon juice",
     "coconut vinegar": "white vinegar with a squeeze of calamansi",
     "lemongrass": "tanglad, or 1/2 teaspoon dried lemongrass",
@@ -42,6 +45,10 @@ SUBSTITUTIONS = {
     "brown sugar": "white sugar with a little molasses",
     "whole chicken": "chicken thighs or breast pieces",
     "bay leaf": "dried bay leaves",
+    "black pepper": "ground white pepper or crushed peppercorns",
+    "bird's eye chili": "a pinch of red pepper flakes",
+    "soda": "a pinch of sugar plus extra calamansi juice",
+    "lemon": "calamansi juice",
 }
 
 
