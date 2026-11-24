@@ -214,7 +214,7 @@ def _time_to_display(row: pd.Series) -> str:
 
 
 def _budget_minutes(row: pd.Series) -> float:
-    """Prefer cook time for 'I have X minutes to cook'; fall back to total."""
+    """Active cook time, used for 'I have X minutes to cook'."""
     for col in ("cook_time_min", "total_time_min"):
         value = _time_min(row, col)
         if not np.isnan(value):
@@ -249,6 +249,8 @@ def version_facts(row: pd.Series, pantry: Iterable[str]) -> dict:
     return {
         "name": str(row.get("recipe_name", "")),
         "display_time": _time_to_display(row),
+        "total_minutes": _time_min(row, "total_time_min"),
+        "active_minutes": _time_min(row, "cook_time_min"),
         "budget_minutes": _budget_minutes(row),
         "servings": str(servings) if servings is not None and not pd.isna(servings) else "",
         "ingredient_count": len(tokens),
@@ -264,6 +266,23 @@ def _version_sort_key(item: tuple[int, dict]) -> tuple[float, float, int]:
     return (facts["missing_cost"], facts["budget_minutes"], pos)
 
 
+def version_positions(
+    group: VersionGroup,
+    df: pd.DataFrame,
+    pantry: Iterable[str],
+    max_versions: int = 3,
+) -> list[int]:
+    """Positions shown to the user: lowest missing cost first, plus the fastest."""
+    facts = [(pos, version_facts(df.iloc[pos], pantry)) for pos in group.rows]
+    facts.sort(key=_version_sort_key)
+    shown = [pos for pos, _ in facts[:max_versions]]
+    if max_versions > 1:
+        fastest = min(facts, key=lambda item: (item[1]["budget_minutes"], item[0]))[0]
+        if fastest not in shown:
+            shown[-1] = fastest
+    return shown
+
+
 def format_version_comparison(
     group: VersionGroup,
     df: pd.DataFrame,
@@ -274,25 +293,25 @@ def format_version_comparison(
 
     Similarities/differences are computed from the rows, never guessed by the
     LLM. The base for the ingredient delta is the version with the lowest
-    missing cost, so '+' means extra shopping and '-' means a simpler version.
+    missing cost, so 'adds' means extra shopping and 'skips' means simpler.
     """
-    facts = [(pos, version_facts(df.iloc[pos], pantry)) for pos in group.rows]
-    facts.sort(key=_version_sort_key)
-    facts = facts[:max_versions]
-    base_pos, base_facts = facts[0]
+    positions = version_positions(group, df, pantry, max_versions=max_versions)
+    facts = [(pos, version_facts(df.iloc[pos], pantry)) for pos in positions]
+    base_pos = positions[0]
     base_tokens = _row_ingredient_tokens(df.iloc[base_pos])
 
     lines = [f"We found {len(facts)} versions of {group.display_name} that fit your ingredients:"]
     for label, (pos, f) in zip("ABCDE", facts):
         tokens = _row_ingredient_tokens(df.iloc[pos])
         extra, absent = sorted(tokens - base_tokens), sorted(base_tokens - tokens)
-        parts = [f"~{f['display_time']}", f"{len(f['missing'])} missing"]
-        if f["techniques"]:
-            parts.append("; ".join(f["techniques"]))
+        active = f["active_minutes"]
+        time_text = f"~{f['display_time']}"
+        if not np.isnan(active) and not np.isnan(f["total_minutes"]) and active != f["total_minutes"]:
+            time_text += f" ({int(active)} min active)"
         detail = ", ".join(f["missing"][:4]) if f["missing"] else "nothing"
-        line = f"{label}. {f['name']} — {parts[0]} · {parts[1]} ({detail})"
-        if len(parts) > 2:
-            line += f" · {parts[2]}"
+        line = f"{label}. {f['name']} — {time_text} · {len(f['missing'])} missing ({detail})"
+        if f["techniques"]:
+            line += " · " + "; ".join(f["techniques"])
         if extra or absent:
             delta = []
             if extra:
@@ -310,13 +329,16 @@ def select_version(
     df: pd.DataFrame,
     pantry: Iterable[str],
     choice: str | int | None = None,
+    eligible: Sequence[int] | None = None,
 ) -> int:
     """Resolve a user's choice to one row position.
 
     Accepts a 1-based label ('1', 'A'), 'fastest', 'fewest missing', or a
     substring of the version name. Defaults to the lowest missing cost.
+    ``eligible`` should be the positions actually shown to the user.
     """
-    facts = [(pos, version_facts(df.iloc[pos], pantry)) for pos in group.rows]
+    allowed = set(eligible) if eligible is not None else set(group.rows)
+    facts = [(pos, version_facts(df.iloc[pos], pantry)) for pos in group.rows if pos in allowed]
     if choice is None or str(choice).strip().lower() in {"", "best", "recommended"}:
         return min(facts, key=_version_sort_key)[0]
 
@@ -324,7 +346,7 @@ def select_version(
     if text in {"fastest", "quickest", "shortest"}:
         return min(facts, key=lambda item: (item[1]["budget_minutes"], item[0]))[0]
     if text in {"fewest missing", "least missing", "most complete"}:
-        return min(facts, key=lambda item: (item[1]["missing_cost"], item[0]))[0]
+        return min(facts, key=lambda item: (len(item[1]["missing"]), item[1]["missing_cost"], item[0]))[0]
 
     ordered = sorted(facts, key=_version_sort_key)
     if text.isdigit():

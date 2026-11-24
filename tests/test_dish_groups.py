@@ -18,6 +18,7 @@ from dish_groups import (  # noqa: E402
     rank_groups,
     select_version,
     version_facts,
+    version_positions,
 )
 
 
@@ -137,6 +138,30 @@ class TestVersionComparison(unittest.TestCase):
         self.assertEqual(select_version(self.group, self.df, [], "fewest missing"), 0)
         self.assertEqual(select_version(self.group, self.df, [], "2"), 1)
         self.assertEqual(select_version(self.group, self.df, [], "A"), 0)
+
+    def test_default_uses_weighted_cost_but_fewest_missing_uses_count(self):
+        df = make_df(
+            [
+                ("Adobo", ["pork", "vinegar"], "a", 60),
+                ("Adobo", ["salt", "water", "sugar", "garlic"], "b", 90),
+            ]
+        )
+        group = build_groups(df)[0]
+        self.assertEqual(select_version(group, df, []), 1)  # staples are cheap to be missing
+        self.assertEqual(
+            select_version(group, df, [], "fewest missing"), 0
+        )  # but 1 < 4 literal items
+
+    def test_display_always_includes_fastest_version(self):
+        df = make_df(
+            [
+                ("Pata", ["pork"], "a", 600),
+                ("Pata", ["pork", "salt"], "b", 540),
+                ("Pata", ["pork", "soy sauce"], "c", 40),
+            ]
+        )
+        group = build_groups(df)[0]
+        self.assertIn(2, version_positions(group, df, [], max_versions=2))
 
 
 if __name__ == "__main__":
