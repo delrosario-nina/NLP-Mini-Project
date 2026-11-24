@@ -309,16 +309,16 @@ def format_version_comparison(
         if not np.isnan(active) and not np.isnan(f["total_minutes"]) and active != f["total_minutes"]:
             time_text += f" ({int(active)} min active)"
         detail = ", ".join(f["missing"][:4]) if f["missing"] else "nothing"
-        line = f"{label}. {f['name']} — {time_text} · {len(f['missing'])} missing ({detail})"
+        line = f"{label}. {f['name']} - {time_text} | {len(f['missing'])} missing ({detail})"
         if f["techniques"]:
-            line += " · " + "; ".join(f["techniques"])
+            line += " | " + "; ".join(f["techniques"])
         if extra or absent:
             delta = []
             if extra:
                 delta.append("adds " + ", ".join(extra[:4]))
             if absent:
                 delta.append("skips " + ", ".join(absent[:4]))
-            line += " · " + "; ".join(delta) + " vs A"
+            line += " | " + "; ".join(delta) + " vs A"
         lines.append(line)
     lines.append("Which version? Or say 'pick the fastest' / 'pick the one with fewest missing'.")
     return "\n".join(lines)
