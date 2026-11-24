@@ -1,4 +1,8 @@
-"""Checks that the manual demo renders a full simulated answer."""
+"""Checks that the manual demo renders a full simulated answer.
+
+HOW TO USE
+    From the repository root:  python -m unittest discover -s tests -v
+"""
 
 import io
 import sys

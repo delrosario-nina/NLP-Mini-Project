@@ -1,5 +1,17 @@
 """Group same-name recipe rows and treat them as comparable *versions*.
 
+HOW TO USE
+    import sys; sys.path.insert(0, "src")
+    from dish_groups import build_groups, format_version_comparison, select_version
+    groups = build_groups(df)                      # df = cleaned_recipes.parquet
+    group = next(g for g in groups if g.name_key == "chicken inasal")
+    eligible = version_positions(group, df, pantry)
+    print(format_version_comparison(group, df, pantry))
+    pos = select_version(group, df, pantry, "fastest", eligible=eligible)
+
+    Full demo:  python examples/demo_answer.py
+    Tests:      python -m unittest discover -s tests -v
+
 This module is opt-in: it does not change the existing alias map, retrievers,
 or RAG pipeline. It only reorganises rows that already share a recipe name.
 

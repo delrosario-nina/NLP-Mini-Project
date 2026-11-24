@@ -1,4 +1,9 @@
-"""Small dependency-light checks for the dish-grouping core."""
+"""Small dependency-light checks for the dish-grouping core.
+
+HOW TO USE
+    From the repository root:  python -m unittest discover -s tests -v
+    Just this file:            python -m unittest tests.test_dish_groups -v
+"""
 
 import sys
 import unittest

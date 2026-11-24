@@ -1,11 +1,12 @@
 """Manual demo: print a conversation that looks like an LLM answer.
 
+HOW TO USE
+    From the repository root:  python examples/demo_answer.py
+    Automated check:           python -m unittest discover -s tests -v
+
 Everything printed here is computed from the recipe rows by src/dish_groups.py;
 no model call is made. This is a deterministic stand-in you can run to inspect
 the exact wording the user would see, before we wire in Ollama.
-
-Run from anywhere:
-    python examples/demo_answer.py
 """
 
 from __future__ import annotations
