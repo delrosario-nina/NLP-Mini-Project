@@ -1,7 +1,17 @@
 """Shared helpers for the Pinoy recipe RAG project.
 
+HOW TO USE
+    import sys; sys.path.insert(0, "src")
+    from alias_map import alias_map, parents_map
+    from ingredient_utils import build_lookup, normalize_text, expand_canonicals
+    lookup, collisions = build_lookup(alias_map())
+    canonicals, leftover = normalize_text("leftover pork adobo", lookup)
+    pantry_tokens = expand_canonicals(canonicals, parents_map())
+
 Used by the alias-map notebook now, and later to normalize user pantry queries,
-so recipes and queries go through exactly the same normalization.
+so recipes and queries go through exactly the same normalization. Compound
+terms (pork belly, ground pork, Maggi Magic Sarap, leftover pork adobo) are
+matched before their generic parts via longest-first matching.
 """
 import re
 import json
@@ -24,7 +34,7 @@ garnishing pcs pc stemmed ends
 """.split())
 
 STOPWORDS = set("""
-of and or to taste for the a an with into about fresh some more extra big small medium
+of and or to taste for the a an with into from about fresh some more extra big small medium
 large thick thin whole inch lengthwise pieces optional plus if needed as desired
 one two three four five six seven eight nine ten half
 """.split())
@@ -60,10 +70,26 @@ def build_lookup(alias_map):
         for term in [canon_n] + [a.strip().lower() for a in aliases]:
             if term.startswith("="):          # exact-phrase-only alias, e.g. "=pepper"
                 term = "=" + term[1:].strip()
-            if term in lookup and lookup[term] != canon_n:
-                collisions.append(f"'{term}' -> '{lookup[term]}' and '{canon_n}'")
+            if term in lookup:
+                if lookup[term] != canon_n:
+                    collisions.append(f"'{term}' -> '{lookup[term]}' and '{canon_n}'")
+                continue  # keep the first definition; collisions must not flip silently
             lookup[term] = canon_n
     return lookup, collisions
+
+
+def expand_canonicals(canonicals, parents):
+    """Add parent ingredients so a generic pantry item can satisfy a specific cut.
+
+    Example: canonical ``pork_belly`` also yields ``pork`` when ``parents`` maps
+    ``pork_belly -> pork``.
+    """
+    out = []
+    for canon in canonicals:
+        for value in (canon, parents.get(canon)):
+            if value and value not in out:
+                out.append(value)
+    return out
 
 
 def _variants(token):
@@ -79,8 +105,11 @@ def _variants(token):
     return out
 
 
-def match_canonicals(phrase, lookup, max_n=4):
+def match_canonicals(phrase, lookup, max_n=6):
     """Greedy longest-match of known terms inside a phrase.
+
+    ``max_n=6`` lets multi-word compounds such as "adobo flakes from leftover
+    adobo" match as one term instead of degrading to generic "pork".
 
     Aliases written with a leading "=" (e.g. "=pepper") only match when the whole
     phrase equals them, so "pepper" -> black pepper but "hot pepper" does not.
