@@ -58,13 +58,23 @@ class VersionGroup:
 
 
 def _row_ingredient_tokens(row: pd.Series) -> set[str]:
-    """Canonical tokens if notebook 02 was run, otherwise the raw ingredient list."""
+    """Canonical tokens if notebook 02 was run, otherwise the raw ingredient list.
+
+    Parquet columns come back as numpy arrays, so accept any non-string iterable
+    here; otherwise the canonical tokens would be silently skipped.
+    """
     for col in ("canonical_ingredients", "ingredient_list", "ingredient_names"):
         value = row.get(col, None)
-        if isinstance(value, (list, tuple, set)):
-            return {str(x).strip().lower() for x in value if str(x).strip()}
-        if isinstance(value, str) and value.strip():
-            return {x.strip().lower() for x in value.split("|") if x.strip()}
+        if isinstance(value, str):
+            if value.strip():
+                return {x.strip().lower() for x in value.split("|") if x.strip()}
+            continue
+        try:
+            items = list(value)
+        except TypeError:
+            continue
+        if items:
+            return {str(x).strip().lower() for x in items if str(x).strip()}
     return set()
 
 

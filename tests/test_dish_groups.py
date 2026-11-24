@@ -9,6 +9,7 @@ import sys
 import unittest
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -124,6 +125,14 @@ class TestVersionComparison(unittest.TestCase):
         self.assertEqual(ingredient_importance("pork belly"), 3.0)
         self.assertEqual(ingredient_importance("soy sauce"), 1.0)
         self.assertEqual(ingredient_importance("mystery ingredient"), 1.5)
+
+    def test_canonical_array_from_parquet_is_used(self):
+        row = pd.Series({
+            "recipe_name": "Adobo",
+            "canonical_ingredients": np.array(["chicken", "vinegar"]),
+            "ingredient_list": ["raw item"],
+        })
+        self.assertEqual(version_facts(row, ["chicken"])["missing"], ["vinegar"])
 
     def test_facts_report_matched_and_missing(self):
         f = version_facts(self.df.iloc[0], ["chicken", "vinegar"])
