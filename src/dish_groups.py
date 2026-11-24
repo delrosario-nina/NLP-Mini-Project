@@ -159,3 +159,183 @@ def rank_groups(groups: Iterable[VersionGroup], row_scores: Sequence[float], k: 
         ranked.append(group)
     ranked.sort(key=lambda g: (-g.score, g.rows[0]))
     return ranked[:k]
+
+
+# --- Version comparison ---------------------------------------------------
+
+STAPLES = {
+    "salt", "water", "cooking oil", "vegetable oil", "canola oil", "olive oil",
+    "sugar", "brown sugar", "black pepper", "pepper", "ground black pepper",
+}
+SEASONINGS = {
+    "soy sauce", "fish sauce", "vinegar", "oyster sauce", "shrimp paste",
+    "bagoong", "patis", "toyo", "maggi magic sarap", "liquid seasoning",
+    "bouillon", "stock", "broth", "sinigang mix", "knorr", "brown sugar",
+}
+MAIN_INGREDIENTS = {
+    "pork", "pork belly", "pork hock", "ground pork", "chicken", "chicken breast",
+    "chicken thigh", "beef", "fish", "tilapia", "bangus", "shrimp", "squid",
+    "milkfish", "egg", "tofu", "eggplant", "pork adobo", "leftover pork adobo",
+}
+
+
+def ingredient_importance(name: str) -> float:
+    """Weight how costly it is to be missing an ingredient.
+
+    Main ingredients matter most; pantry staples barely matter; unknown items
+    are treated conservatively so the system does not silently understate cost.
+    """
+    key = str(name).strip().lower()
+    if key in STAPLES:
+        return 0.25
+    if key in SEASONINGS:
+        return 1.0
+    if key in MAIN_INGREDIENTS:
+        return 3.0
+    if any(word in key for word in ("sauce", "powder", "mix", "seasoning", "cube")):
+        return 1.0
+    if any(word in key for word in ("leaf", "leaves", "onion", "garlic", "tomato", "chili")):
+        return 2.0
+    return 1.5
+
+
+def missing_cost(row: pd.Series, pantry: Iterable[str]) -> float:
+    """Sum of importance-weighted ingredients the user does not have."""
+    have = {str(x).strip().lower() for x in pantry}
+    return sum(ingredient_importance(i) for i in _row_ingredient_tokens(row) - have)
+
+
+def _time_to_display(row: pd.Series) -> str:
+    raw = row.get("total_time", None)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    minutes = _time_min(row, "total_time_min")
+    return f"{int(minutes)} minutes" if not np.isnan(minutes) else "time unknown"
+
+
+def _budget_minutes(row: pd.Series) -> float:
+    """Prefer cook time for 'I have X minutes to cook'; fall back to total."""
+    for col in ("cook_time_min", "total_time_min"):
+        value = _time_min(row, col)
+        if not np.isnan(value):
+            return value
+    return float("inf")
+
+
+def _technique_hints(row: pd.Series) -> list[str]:
+    text = f"{row.get('recipe_name', '')} {row.get('instructions', '')}".lower()
+    markers = {
+        "overnight": "overnight soak",
+        "marinate": "marinated",
+        "instant pot": "Instant Pot",
+        "deep fry": "deep-fried",
+        "pan fry": "pan-fried",
+        "grill": "grilled",
+        "bake": "baked",
+        "soda": "uses soda",
+        "sprite": "uses soda",
+        "knorr": "uses Knorr",
+        "maggi": "uses Maggi",
+    }
+    return [label for needle, label in markers.items() if needle in text]
+
+
+def version_facts(row: pd.Series, pantry: Iterable[str]) -> dict:
+    """Deterministic facts about one version, safe to hand to the LLM as-is."""
+    have = {str(x).strip().lower() for x in pantry}
+    tokens = _row_ingredient_tokens(row)
+    matched, missing = sorted(tokens & have), sorted(tokens - have)
+    servings = row.get("servings", None)
+    return {
+        "name": str(row.get("recipe_name", "")),
+        "display_time": _time_to_display(row),
+        "budget_minutes": _budget_minutes(row),
+        "servings": str(servings) if servings is not None and not pd.isna(servings) else "",
+        "ingredient_count": len(tokens),
+        "matched": matched,
+        "missing": missing,
+        "missing_cost": round(missing_cost(row, pantry), 2),
+        "techniques": _technique_hints(row),
+    }
+
+
+def _version_sort_key(item: tuple[int, dict]) -> tuple[float, float, int]:
+    pos, facts = item
+    return (facts["missing_cost"], facts["budget_minutes"], pos)
+
+
+def format_version_comparison(
+    group: VersionGroup,
+    df: pd.DataFrame,
+    pantry: Iterable[str],
+    max_versions: int = 3,
+) -> str:
+    """Render a short comparison of a group's versions.
+
+    Similarities/differences are computed from the rows, never guessed by the
+    LLM. The base for the ingredient delta is the version with the lowest
+    missing cost, so '+' means extra shopping and '-' means a simpler version.
+    """
+    facts = [(pos, version_facts(df.iloc[pos], pantry)) for pos in group.rows]
+    facts.sort(key=_version_sort_key)
+    facts = facts[:max_versions]
+    base_pos, base_facts = facts[0]
+    base_tokens = _row_ingredient_tokens(df.iloc[base_pos])
+
+    lines = [f"We found {len(facts)} versions of {group.display_name} that fit your ingredients:"]
+    for label, (pos, f) in zip("ABCDE", facts):
+        tokens = _row_ingredient_tokens(df.iloc[pos])
+        extra, absent = sorted(tokens - base_tokens), sorted(base_tokens - tokens)
+        parts = [f"~{f['display_time']}", f"{len(f['missing'])} missing"]
+        if f["techniques"]:
+            parts.append("; ".join(f["techniques"]))
+        detail = ", ".join(f["missing"][:4]) if f["missing"] else "nothing"
+        line = f"{label}. {f['name']} — {parts[0]} · {parts[1]} ({detail})"
+        if len(parts) > 2:
+            line += f" · {parts[2]}"
+        if extra or absent:
+            delta = []
+            if extra:
+                delta.append("adds " + ", ".join(extra[:4]))
+            if absent:
+                delta.append("skips " + ", ".join(absent[:4]))
+            line += " · " + "; ".join(delta) + " vs A"
+        lines.append(line)
+    lines.append("Which version? Or say 'pick the fastest' / 'pick the one with fewest missing'.")
+    return "\n".join(lines)
+
+
+def select_version(
+    group: VersionGroup,
+    df: pd.DataFrame,
+    pantry: Iterable[str],
+    choice: str | int | None = None,
+) -> int:
+    """Resolve a user's choice to one row position.
+
+    Accepts a 1-based label ('1', 'A'), 'fastest', 'fewest missing', or a
+    substring of the version name. Defaults to the lowest missing cost.
+    """
+    facts = [(pos, version_facts(df.iloc[pos], pantry)) for pos in group.rows]
+    if choice is None or str(choice).strip().lower() in {"", "best", "recommended"}:
+        return min(facts, key=_version_sort_key)[0]
+
+    text = str(choice).strip().lower()
+    if text in {"fastest", "quickest", "shortest"}:
+        return min(facts, key=lambda item: (item[1]["budget_minutes"], item[0]))[0]
+    if text in {"fewest missing", "least missing", "most complete"}:
+        return min(facts, key=lambda item: (item[1]["missing_cost"], item[0]))[0]
+
+    ordered = sorted(facts, key=_version_sort_key)
+    if text.isdigit():
+        idx = int(text) - 1
+        if 0 <= idx < len(ordered):
+            return ordered[idx][0]
+    if len(text) == 1 and "a" <= text <= "z":
+        idx = ord(text) - ord("a")
+        if idx < len(ordered):
+            return ordered[idx][0]
+    for pos, f in ordered:
+        if text in f["name"].lower():
+            return pos
+    return min(facts, key=_version_sort_key)[0]

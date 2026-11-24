@@ -9,7 +9,16 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from dish_groups import build_groups, collapse_near_identical, normalize_name, rank_groups  # noqa: E402
+from dish_groups import (  # noqa: E402
+    build_groups,
+    collapse_near_identical,
+    format_version_comparison,
+    ingredient_importance,
+    normalize_name,
+    rank_groups,
+    select_version,
+    version_facts,
+)
 
 
 def make_df(rows):
@@ -91,6 +100,43 @@ class TestRankGroups(unittest.TestCase):
                 ("Sinigang", ["pork"], "c", 45),
             ]
         )
+
+
+class TestVersionComparison(unittest.TestCase):
+    def setUp(self):
+        # Two genuinely different versions: the second needs one more item.
+        self.df = make_df(
+            [
+                ("Chicken Inasal", ["chicken", "vinegar", "garlic"], "grill the chicken", 35),
+                ("Chicken Inasal", ["chicken", "vinegar", "garlic", "soda", "soy sauce"], "marinate overnight then grill", 78),
+            ]
+        )
+        self.group = build_groups(self.df)[0]
+
+    def test_importance_weights(self):
+        self.assertEqual(ingredient_importance("salt"), 0.25)
+        self.assertEqual(ingredient_importance("pork belly"), 3.0)
+        self.assertEqual(ingredient_importance("soy sauce"), 1.0)
+        self.assertEqual(ingredient_importance("mystery ingredient"), 1.5)
+
+    def test_facts_report_matched_and_missing(self):
+        f = version_facts(self.df.iloc[0], ["chicken", "vinegar"])
+        self.assertEqual(f["missing"], ["garlic"])
+        self.assertEqual(f["matched"], ["chicken", "vinegar"])
+        self.assertGreater(f["missing_cost"], 0)
+
+    def test_comparison_is_deterministic_and_mentions_delta(self):
+        text = format_version_comparison(self.group, self.df, ["chicken", "vinegar"])
+        self.assertIn("2 versions of Chicken Inasal", text)
+        self.assertIn("Which version?", text)
+        self.assertIn("adds", text)
+        self.assertIn("overnight", text)
+
+    def test_selection_choices(self):
+        self.assertEqual(select_version(self.group, self.df, [], "fastest"), 0)
+        self.assertEqual(select_version(self.group, self.df, [], "fewest missing"), 0)
+        self.assertEqual(select_version(self.group, self.df, [], "2"), 1)
+        self.assertEqual(select_version(self.group, self.df, [], "A"), 0)
 
 
 if __name__ == "__main__":
