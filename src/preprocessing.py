@@ -104,7 +104,7 @@ def ingredient_tokens(lines: Iterable[str]) -> set[str]:
     return tokens
 
 
-def prepare_recipes(raw: pd.DataFrame) -> pd.DataFrame:
+def prepare_recipes(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Clean a raw recipe DataFrame without dropping or renumbering anything yet."""
     df = raw.copy()
     for col in TEXT_COLUMNS:

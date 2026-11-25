@@ -53,17 +53,14 @@ SUBSTITUTIONS = {
 
 
 def load_recipes() -> tuple[pd.DataFrame, str]:
-    for rel in (
-        "data/processed/cleaned_recipes.parquet",
-        "notebooks/data/processed/cleaned_recipes.parquet",
-    ):
-        path = ROOT / rel
-        if path.exists():
-            return pd.read_parquet(path), rel
-    raise SystemExit(
-        "No recipe parquet found. Run notebooks 01 and 02 first, or regenerate "
-        "data/processed/cleaned_recipes.parquet."
-    )
+    rel = "data/processed/cleaned_recipes.parquet"
+    path = ROOT / rel
+    if not path.exists():
+        raise SystemExit(
+            "No recipe parquet found. Run notebooks 01 and 02 first to create "
+            "data/processed/cleaned_recipes.parquet."
+        )
+    return pd.read_parquet(path), rel
 
 
 def simplify_steps(row: pd.Series, limit: int = 6) -> list[str]:
