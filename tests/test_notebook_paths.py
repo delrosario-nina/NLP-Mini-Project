@@ -48,7 +48,8 @@ class TestNotebookPaths(unittest.TestCase):
         nb = json.loads((ROOT / "notebooks" / "03_retrieval.ipynb").read_text(encoding="utf-8"))
         import_cell = next(
             "".join(cell["source"]) for cell in nb["cells"]
-            if cell["cell_type"] == "code" and "Bootstrapped import" in "".join(cell["source"])
+            if cell["cell_type"] == "code"
+            and "from ingredient_utils import" in "".join(cell["source"])
         )
         self.assertIn("except ModuleNotFoundError:", import_cell)
         self.assertIn('sys.path.insert(0, str(src))', import_cell)
