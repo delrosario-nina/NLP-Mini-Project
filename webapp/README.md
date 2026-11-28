@@ -85,6 +85,31 @@ rice noodles, ...) apply immediately after regenerating
 of the new canonicals (galunggong, miso, hotdog, ...) lands when notebooks 01
 and 02 are re-run on the improved map.
 
+## The NLP mechanism lives in `src/`, not in the webapp
+
+The query-understanding engine is a project module, so the notebooks and the
+interface share exactly the same tokenisation:
+
+- `src/ingredient_utils.py` — phrase splitting, longest-first canonical
+  matching, and `parse_query` for raw pantry text (English/Tagalog/Taglish)
+- `src/query_understanding.py` — time budgets (half an hour, isang oras, and
+  "no time limit"), diets with negation ("no longer a vegetarian" clears the
+  tag; most recent statement wins), dish types (soup, stew, breakfast,
+  noodles, grilled, dessert...), allergies (with seafood/dairy/egg/peanut
+  groups), pantry accumulation across a conversation, constraint filtering,
+  and pantry-fit ranking
+- `src/dish_groups.py` — version grouping and per-recipe facts
+- `src/alias_map.py` — the canonical ingredient lexicon and parent links
+
+`webapp/rag.py` imports these modules; it does not define its own copy. To try
+the mechanism without the interface:
+
+```powershell
+python examples/query_understanding_demo.py
+python examples/query_understanding_demo.py "i want a soup, under 30 minutes"
+```
+
+
 ## Answer modes
 
 The UI always sends `mode: "auto"`, so it works with or without a local model.
