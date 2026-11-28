@@ -17,9 +17,9 @@ const STARTERS = [
 
 const SUGGESTIONS = [
   "Pick the fastest one",
-  "Which needs the fewest ingredients?",
   "Suggest substitutions",
   "Show the cooking steps",
+  "Show me more recipes",
 ];
 
 const state = {
@@ -285,13 +285,17 @@ function renderConversations() {
 
 /* ---------- chat rendering ---------- */
 
-function recipeMini(recipe) {
+function recipeMini(recipe, variant) {
   const missing = recipe.missing && recipe.missing.length
     ? ` · ${recipe.missing.length} missing`
     : " · nothing missing";
-  return `<button class="recipe-mini" type="button" data-row="${recipe.row}">
+  const cls = variant ? `recipe-mini ${variant}` : "recipe-mini";
+  const rank = variant === "version"
+    ? `<span class="mini-rank">v${recipe.rank}</span>`
+    : `<span class="mini-rank">${recipe.rank}</span>`;
+  return `<button class="${cls}" type="button" data-row="${recipe.row}">
     <span class="mini-top">
-      <span class="mini-rank">${recipe.rank}</span>
+      ${rank}
       <span class="mini-name">${esc(recipe.name)}</span>
     </span>
     <span class="mini-meta">${esc(recipe.time)}${missing}</span>
@@ -299,35 +303,71 @@ function recipeMini(recipe) {
   </button>`;
 }
 
-function recipeBlock(recipes, expanded) {
-  const strip = `<div class="recipe-strip">${recipes.map(recipeMini).join("")}</div>`;
-  if (expanded) return strip;
-  return `<details class="recipe-ref">
-    <summary>${recipes.length} recipes from this search</summary>
-    ${strip}
-  </details>`;
+function constraintChips(constraints) {
+  if (!constraints) return "";
+  const chips = [];
+  if (constraints.diet) chips.push(`<span class="chip c-diet">${esc(constraints.diet)}</span>`);
+  if (constraints.max_minutes != null) {
+    chips.push(`<span class="chip c-time">≤ ${constraints.max_minutes} min</span>`);
+  }
+  if (constraints.diet_fallback) {
+    chips.push(`<span class="chip c-warn">no ${esc(constraints.diet)} match — closest shown</span>`);
+  }
+  if (constraints.time_fallback) {
+    chips.push(`<span class="chip c-warn">over your time budget</span>`);
+  }
+  return chips.length ? `<div class="constraint-row">${chips.join("")}</div>` : "";
 }
 
-function renderMessage(message, index) {
+function recipeBlock(message) {
+  const recipes = message.recipes || [];
+  if (!recipes.length) return "";
+
+  const rest = recipes.slice(1);
+  const revealed = Boolean(message.moreRevealed);
+  const parts = ['<div class="recipe-stack">'];
+
+  parts.push(`<div class="recipe-strip primary">${recipeMini(recipes[0])}</div>`);
+
+  if (message.versions && message.versions.length) {
+    parts.push(
+      `<div class="version-wrap">` +
+      `<p class="version-label">Other versions of this dish</p>` +
+      `<div class="recipe-strip versions">${message.versions
+        .map((recipe) => recipeMini(recipe, "version"))
+        .join("")}</div>` +
+      `</div>`
+    );
+  }
+
+  if (rest.length) {
+    parts.push(
+      `<div class="recipe-strip more" ${revealed ? "" : "hidden"}>` +
+      rest.map((recipe) => recipeMini(recipe)).join("") +
+      `</div>`
+    );
+    if (!revealed) {
+      const word = rest.length === 1 ? "recipe" : "recipes";
+      parts.push(`<button class="more-btn" type="button" data-more>Show ${rest.length} more ${word}</button>`);
+    }
+  }
+
+  parts.push("</div>");
+  return parts.join("");
+}
+
+function renderMessage(message) {
   if (message.role === "user") {
     return `<div class="msg user" data-msg-id="${message.id}">
       <div class="bubble">${esc(message.content)}</div>
     </div>`;
   }
 
-  const conversation = activeConversation();
-  const firstAssistant = conversation
-    ? conversation.messages.findIndex((item) => item.role === "assistant")
-    : -1;
-  const expanded = message.recipesExpanded ?? index === firstAssistant;
-
   const answer = message.pending
     ? esc(message.content)
     : renderMarkdown(message.content || "");
 
-  const recipes = message.recipes && message.recipes.length
-    ? recipeBlock(message.recipes, expanded)
-    : "";
+  const recipes = recipeBlock(message);
 
   const suggestions = !message.pending && message.suggestions && message.suggestions.length
     ? `<div class="suggestions">${message.suggestions
@@ -348,6 +388,7 @@ function renderMessage(message, index) {
     <div class="assistant-body">
       <div class="answer${message.pending ? " streaming" : ""}">${answer}</div>
       ${error}
+      ${constraintChips(message.constraints)}
       ${recipes}
       ${suggestions}
       ${foot}
@@ -441,10 +482,21 @@ function updateMeta(message) {
   const body = document.querySelector(`[data-msg-id="${message.id}"] .assistant-body`);
   if (!body) return;
 
-  const existing = body.querySelector(".recipe-strip, .recipe-ref");
-  const html = message.recipes && message.recipes.length
-    ? recipeBlock(message.recipes, Boolean(message.recipesExpanded))
-    : "";
+  // Constraint chips appear right after the answer text.
+  let chips = body.querySelector(".constraint-row");
+  const chipsHtml = constraintChips(message.constraints);
+  if (chipsHtml) {
+    if (chips) chips.outerHTML = chipsHtml;
+    else {
+      const answer = body.querySelector(".answer");
+      if (answer) answer.insertAdjacentHTML("afterend", chipsHtml);
+    }
+  } else if (chips) {
+    chips.remove();
+  }
+
+  const existing = body.querySelector(".recipe-stack, .recipe-strip, .recipe-ref");
+  const html = recipeBlock(message);
 
   if (!html) {
     if (existing) existing.remove();
@@ -458,8 +510,8 @@ function updateMeta(message) {
     return;
   }
 
-  const answer = body.querySelector(".answer");
-  if (answer) answer.insertAdjacentHTML("afterend", html);
+  const anchor = body.querySelector(".constraint-row") || body.querySelector(".answer");
+  if (anchor) anchor.insertAdjacentHTML("afterend", html);
 }
 
 async function send(raw) {
@@ -488,7 +540,10 @@ async function send(raw) {
     content: "",
     pending: true,
     recipes: [],
-    recipesExpanded: !conversation.messages.some((message) => message.role === "assistant"),
+    versions: [],
+    constraints: null,
+    more_count: 0,
+    moreRevealed: false,
     mode: null,
     suggestions: [],
   };
@@ -528,6 +583,9 @@ async function send(raw) {
     await consumeSSE(response, {
       meta(data) {
         assistant.recipes = data.recipes || [];
+        assistant.versions = data.versions || [];
+        assistant.constraints = data.constraints || null;
+        assistant.more_count = data.more_count || 0;
         assistant.mode = data.mode;
         updateMeta(assistant);
       },
@@ -558,12 +616,20 @@ async function send(raw) {
 
 /* ---------- recipe modal / side panel ---------- */
 
+function findMessageById(id) {
+  const conversation = activeConversation();
+  if (!conversation) return null;
+  return conversation.messages.find((message) => message.id === id) || null;
+}
+
 function findRecipe(row) {
   const conversation = activeConversation();
   if (!conversation) return null;
   for (const message of conversation.messages) {
     const match = (message.recipes || []).find((recipe) => recipe.row === row);
     if (match) return match;
+    const version = (message.versions || []).find((recipe) => recipe.row === row);
+    if (version) return version;
   }
   return null;
 }
@@ -828,6 +894,18 @@ function init() {
   });
 
   $("#messages").addEventListener("click", (event) => {
+    const moreButton = event.target.closest("[data-more]");
+    if (moreButton) {
+      const container = moreButton.closest(".msg");
+      const message = findMessageById(container && container.dataset.msgId);
+      if (message) {
+        message.moreRevealed = true;
+        saveStore();
+        renderChat();
+        scrollToBottom(false);
+      }
+      return;
+    }
     const card = event.target.closest("[data-row]");
     if (card) {
       openRecipe(Number(card.dataset.row));

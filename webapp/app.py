@@ -128,10 +128,31 @@ def api_chat(body: ChatIn):
         else None
     )
 
+    # Query understanding: pantry canonicals, their generic parents, and the
+    # diet / time constraints the user stated anywhere in the conversation.
     search_text = rag.retrieval_query(body.pantry, last_user, assets.lookup)
     pantry_canon, pantry_unmapped = rag.parse_query(body.pantry, assets.lookup)
-    hits, _, _ = rag.search(assets, search_text, body.method, body.k)
-    recipes = rag.summarize_hits(assets, hits, pantry_canon)
+    constraints = rag.merge_constraints(body.pantry, last_user)
+    pantry_expanded = rag.expand_pantry(assets, pantry_canon)
+
+    # Retrieve a wider candidate pool, then apply diet/time filters on top so
+    # "vegetarian, under 30 minutes" can skip several irrelevant hits. Diets
+    # need the widest pool: most retrieved dishes usually contain meat.
+    if constraints["diet"]:
+        pool_k = 24
+    elif constraints["max_minutes"] is not None:
+        pool_k = 12
+    else:
+        pool_k = body.k
+    hits, _, _ = rag.search(assets, search_text, body.method, pool_k)
+    hits, constraint_report = rag.apply_constraints(assets, hits, pantry_expanded, constraints)
+    hits = hits[: body.k]
+
+    recipes = rag.summarize_hits(assets, hits, pantry_expanded)
+    versions = (
+        rag.version_cards(assets, hits[0][0], pantry_expanded) if hits else []
+    )
+    more_count = max(0, len(hits) - 1)
 
     info = rag.ollama_info()
     use_llm = body.mode == "llm" or (
@@ -142,6 +163,9 @@ def api_chat(body: ChatIn):
         "normalized": pantry_canon,
         "unmapped": pantry_unmapped,
         "recipes": recipes,
+        "versions": versions,
+        "constraints": constraint_report,
+        "more_count": more_count,
         "method": body.method,
     }
 
@@ -150,10 +174,13 @@ def api_chat(body: ChatIn):
             yield rag.sse("meta", {**meta, "mode": "demo"})
             if is_followup:
                 text = rag.demo_followup(
-                    assets, hits, pantry_canon, last_user, focus_row
+                    assets, hits, pantry_expanded, last_user, focus_row
                 )
             else:
-                text = rag.demo_answer(assets, hits, pantry_canon)
+                text = rag.demo_answer(
+                    assets, hits, pantry_expanded,
+                    constraints=constraint_report, more_count=more_count,
+                )
             for piece in rag.chunk_text(text):
                 yield rag.sse("token", {"text": piece})
                 time.sleep(0.012)
@@ -191,9 +218,10 @@ def api_chat(body: ChatIn):
                 assets,
                 body.pantry,
                 hits,
-                pantry_canon,
+                pantry_expanded,
                 turns,
                 focus_row=focus_row,
+                constraints=constraint_report,
             )
             for piece in rag.generate(messages):
                 yield rag.sse("token", {"text": piece})

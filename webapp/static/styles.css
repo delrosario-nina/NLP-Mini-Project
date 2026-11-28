@@ -594,17 +594,18 @@ button, textarea, input { font-family: inherit; }
 
 /* ---------- Recipe cards inside chat ---------- */
 
+.recipe-stack { display: grid; gap: 10px; margin-top: 16px; }
+
 .recipe-strip {
   display: flex;
   gap: 10px;
-  margin-top: 16px;
-  padding: 3px 2px 7px;
+  padding: 3px 2px 4px;
   overflow-x: auto;
   scrollbar-width: thin;
 }
 
 .recipe-mini {
-  flex: 0 0 214px;
+  flex: 0 0 232px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -619,10 +620,18 @@ button, textarea, input { font-family: inherit; }
   transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
+.recipe-strip.primary .recipe-mini { flex: 0 0 260px; }
+
 .recipe-mini:hover {
   border-color: var(--ink);
   transform: translateY(-2px);
   box-shadow: 3px 4px 0 var(--calamansi-soft);
+}
+
+.recipe-mini.version {
+  border-style: dashed;
+  background: var(--paper-3);
+  flex: 0 0 208px;
 }
 
 .mini-top { display: flex; align-items: baseline; gap: 8px; }
@@ -650,26 +659,57 @@ button, textarea, input { font-family: inherit; }
 
 .mini-open { margin-top: 2px; font-size: 0.72rem; font-weight: 700; color: var(--leaf); }
 
-.recipe-ref { margin-top: 14px; }
+.version-wrap { display: grid; gap: 4px; }
 
-.recipe-ref summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 11px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: transparent;
+.version-label {
+  margin: 2px 0 0;
+  font-size: 0.6rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  cursor: var(--cursor), pointer;
-  list-style: none;
 }
 
-.recipe-ref summary::-webkit-details-marker { display: none; }
-.recipe-ref summary:hover { border-color: var(--ink); color: var(--ink-soft); }
-.recipe-ref[open] summary { background: var(--paper-2); }
+.more-btn {
+  justify-self: start;
+  padding: 6px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: var(--cursor), pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.more-btn:hover { border-color: var(--ink); background: var(--paper-3); }
+
+/* ---------- Constraint chips (diet / time) ---------- */
+
+.constraint-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+
+.constraint-row .chip {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+}
+
+.chip.c-diet {
+  background: rgba(126, 154, 29, 0.16);
+  border-color: rgba(126, 154, 29, 0.45);
+  color: #55611a;
+}
+
+.chip.c-time {
+  background: rgba(244, 192, 32, 0.2);
+  border-color: rgba(199, 143, 20, 0.5);
+  color: #8a6410;
+}
+
+.chip.c-warn {
+  background: rgba(232, 84, 0, 0.12);
+  border-color: rgba(232, 84, 0, 0.35);
+  color: #b23e00;
+}
 
 /* ---------- Suggestions ---------- */
 

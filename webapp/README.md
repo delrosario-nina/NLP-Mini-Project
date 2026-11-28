@@ -52,11 +52,24 @@ like notebook 04. The parquet and alias map must exist — run notebooks 01 and
 - **Multi-turn** — the first message is your pantry ("may sitaw, bawang, at manok
   ako"). Follow-ups ("pick the fastest one", "show the steps") are sent with the
   whole conversation, so the model can answer in context.
+- **Query understanding** — apart from ingredients, the parser reads the
+  **time budget** ("i only have half an hour", "isang oras lang", "45 minutes
+  max"), the **lifestyle** ("vegetarian", "vegan", "pescatarian", "gulay lang"),
+  and applies them as filters with honest fallback ("no vegetarian match —
+  closest shown").
+- **Cuts and specifics** — "pork belly" / "liempo" / "kasim" map to the exact
+  cut and also expand to their parent (`pork`), so if the dataset has a belly
+  dish you get it, and otherwise the closest pork dish — and a generic "pork"
+  pantry still matches belly recipes. Fish types (bangus, tilapia, galunggong,
+  tulingan…) fall back to `fish` the same way.
 - **Fixed retrieval** — the UI always uses the notebook's `hybrid` retriever. There
   is no method picker, so the interface shows the pipeline as intended.
-- **Recipe cards** — each answer shows compact cards. Clicking one opens a
-  rounded modal with the full ingredient list (with quantities) and method, in
-  the spirit of CookWell.
+- **One recipe at a time** — the answer shows only the most relevant recipe.
+  More appears when the top dish has **other versions** (pork adobo style,
+  auto-detected by dish name) or when you click **"Show more recipes"** / ask
+  "show me more recipes" in chat.
+- **Recipe cards** — clicking the card opens a rounded modal with the full
+  ingredient list (with quantities) and method, in the spirit of CookWell.
 - **Keep chatting while reading** — "Open in side panel" docks the same recipe
   as a right-hand column, so the chat stays usable. Follow-ups sent while a
   recipe is open are focused on that recipe.
@@ -64,6 +77,13 @@ like notebook 04. The parquet and alias map must exist — run notebooks 01 and
   orange, pink on cream) taken from the group's mood board, with the pixel rat
   pizza sticker as the mascot: app icon, assistant avatar, and page cursor
   (`webapp/static/rat-pizza.png`, `webapp/static/cursor.png`).
+
+The alias map itself lives in `src/alias_map.py` (the maintained source of
+truth). Query-side aliases (isda -> fish, kasim -> pork shoulder, bihon ->
+rice noodles, ...) apply immediately after regenerating
+`data/processed/alias_map.json` via `write_alias_map()`. Corpus-side coverage
+of the new canonicals (galunggong, miso, hotdog, ...) lands when notebooks 01
+and 02 are re-run on the improved map.
 
 ## Answer modes
 
