@@ -155,9 +155,15 @@ def api_chat(body: ChatIn):
 
     search_text = rag.retrieval_query(body.pantry, last_user, assets.lookup)
 
-    # Retrieve a wider candidate pool, then apply diet/time/category/allergen
-    # filters on top so "vegetarian soup, under 30 minutes" can skip several
-    # irrelevant hits. Diets need the widest pool: most dishes contain meat.
+    # Retrieve a wider candidate pool, then apply diet/time/allergen filters on
+    # top. A stated dish type is stronger than a filter: it defines the
+    # candidate universe (soup names only, novelty excluded), because "soup"
+    # lives in recipe names that BM25 never sees and hybrid fusion can drown
+    # an otherwise perfect dense match.
+    category_universe = None
+    if constraints["category"]:
+        category_universe = rag.category_positions(assets.df, constraints["category"])
+
     if constraints["diet"]:
         pool_k = 24
     elif (
@@ -168,7 +174,10 @@ def api_chat(body: ChatIn):
         pool_k = 12
     else:
         pool_k = body.k
-    hits, _, _ = rag.search(assets, search_text, body.method, pool_k)
+    hits, _, _ = rag.search(
+        assets, search_text, body.method, pool_k,
+        restrict_positions=category_universe,
+    )
     hits, constraint_report = rag.apply_constraints(assets, hits, pantry_expanded, constraints)
     # Retrieval picks the candidates; pantry fit decides which is shown first
     # (most matched, fewest missing, fastest — the user's exact expectation).

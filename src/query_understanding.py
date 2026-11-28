@@ -123,6 +123,21 @@ _DIET_NEGATION = re.compile(
 
 # --- dish types -------------------------------------------------------------
 
+# Food art: bentos, decorated rice balls, centrepieces. They are real rows in
+# the corpus but they are not dishes someone asks for by type — "Chicken
+# Tinola Onigiri Bento" is not a soup even though "tinola" is in the name.
+NOVELTY_NAME_RE = re.compile(
+    r"bento|onigiri|charaben|kyaraben|decoration|centerpiece|food\s+art"
+    r"|cake\s+pops?|shaped\s+like|cute\s+(?:chick|food)",
+    re.I,
+)
+
+
+def is_novelty(name) -> bool:
+    """True for decorated/food-art recipes (bento boxes, centrepieces)."""
+    return bool(NOVELTY_NAME_RE.search(str(name)))
+
+
 DISH_CATEGORIES: dict[str, tuple[re.Pattern, re.Pattern]] = {
     "soup": (
         re.compile(r"\bsoup\b|\bsabaw\b|\bsinigang\b|\bnilaga\b|\bbroth\b", re.I),
@@ -421,6 +436,10 @@ def apply_constraints(df, hits, pantry: Sequence[str], constraints: dict):
     }
     kept = list(hits)
 
+    # Order matters: the dish type is the user's stated intent, so it runs
+    # BEFORE the time budget. "Soup under 30 minutes" with no such soup then
+    # falls back to the fastest soup with an honest note, instead of quietly
+    # replacing the soup with a quick non-soup dish.
     if constraints["diet"]:
         banned = DIET_EXCLUSIONS[constraints["diet"]]
         survivors = [
@@ -430,6 +449,19 @@ def apply_constraints(df, hits, pantry: Sequence[str], constraints: dict):
             kept = survivors
         else:
             report["diet_fallback"] = True
+
+    if constraints["category"]:
+        _, name_re = DISH_CATEGORIES[constraints["category"]]
+        survivors = [
+            hit
+            for hit in kept
+            if name_re.search(str(df.iloc[hit[0]]["recipe_name"]))
+            and not is_novelty(df.iloc[hit[0]]["recipe_name"])
+        ]
+        if survivors:
+            kept = survivors
+        else:
+            report["category_fallback"] = True
 
     if constraints["max_minutes"] is not None:
         limit = constraints["max_minutes"]
@@ -443,16 +475,6 @@ def apply_constraints(df, hits, pantry: Sequence[str], constraints: dict):
         else:
             report["time_fallback"] = True
 
-    if constraints["category"]:
-        _, name_re = DISH_CATEGORIES[constraints["category"]]
-        survivors = [
-            hit for hit in kept if name_re.search(str(df.iloc[hit[0]]["recipe_name"]))
-        ]
-        if survivors:
-            kept = survivors
-        else:
-            report["category_fallback"] = True
-
     if constraints["allergens"]:
         banned = set(constraints["allergens"])
         survivors = [
@@ -464,6 +486,25 @@ def apply_constraints(df, hits, pantry: Sequence[str], constraints: dict):
             report["allergen_fallback"] = True
 
     return kept, report
+
+
+def category_positions(df, category: str) -> list[int]:
+    """Row positions whose name marks them as this dish type.
+
+    The dish type is the user's stated intent, so it defines the candidate
+    universe for retrieval instead of acting as a post-filter on a pool that
+    may not contain any soup at all ("soup" appears in recipe NAMES, which
+    BM25 never sees, so a great dense match can be drowned by fusion).
+    Novelty/food-art names (bento boxes) are excluded.
+    """
+    spec = DISH_CATEGORIES.get(category)
+    if not spec:
+        return []
+    _, name_re = spec
+    return [
+        i for i, name in enumerate(df["recipe_name"])
+        if name_re.search(str(name)) and not is_novelty(name)
+    ]
 
 
 def rank_by_pantry_fit(df, hits, pantry: Sequence[str]):
@@ -481,6 +522,7 @@ def rank_by_pantry_fit(df, hits, pantry: Sequence[str]):
         matched_weight = sum(ingredient_importance(item) for item in facts["matched"])
         return (
             -matched_weight,
+            is_novelty(df.iloc[pos]["recipe_name"]),
             facts["missing_cost"],
             facts["budget_minutes"],
             -score,

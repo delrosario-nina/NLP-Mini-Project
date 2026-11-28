@@ -207,6 +207,7 @@ def retrieval_query(pantry: str, followup: str, lookup: dict) -> str:
 
 from query_understanding import (  # noqa: E402
     accumulate_pantry,
+    category_positions,
     merge_constraints,
     pantry_changed,
     parse_constraints,
@@ -285,8 +286,15 @@ def search(
     query: str,
     method: str = "hybrid",
     k: int = TOP_K,
+    restrict_positions: Sequence[int] | None = None,
 ) -> tuple[list[tuple[int, float]], list[str], list[str]]:
-    """Return ([(row_position, score), ...], canonicals, unmapped tokens)."""
+    """Return ([(row_position, score), ...], canonicals, unmapped tokens).
+
+    ``restrict_positions`` limits scoring to the given rows — used when the
+    user asks for a dish type (soup, breakfast, ...), which defines the
+    candidate universe instead of being a post-filter on a pool that hybrid
+    fusion may have filled with non-soup dishes.
+    """
     if method not in METHODS:
         raise ValueError(f"Unknown retrieval method {method!r}. Choose from {METHODS}.")
 
@@ -301,8 +309,15 @@ def search(
     else:
         scores = parts[method]
 
+    if restrict_positions is not None:
+        mask = np.full(len(scores), -np.inf)
+        allowed = np.asarray(list(restrict_positions), dtype=int)
+        if len(allowed):
+            mask[allowed] = 0.0
+        scores = scores + mask
+
     top = np.argsort(-scores, kind="stable")[:k]
-    hits = [(int(pos), float(scores[pos])) for pos in top]
+    hits = [(int(pos), float(scores[pos])) for pos in top if np.isfinite(scores[pos])]
     return hits, canon, unmapped
 
 
@@ -310,6 +325,9 @@ SYSTEM_PROMPT = (
     "You are a Filipino recipe assistant. "
     "Use ONLY the recipes provided in the context. "
     "Do not invent ingredients, quantities, cooking times, or steps that are not in the context. "
+    "A substitute must be a DIFFERENT ingredient the user could reasonably have; "
+    "never name the missing ingredient as its own substitute. "
+    "If the recipe is not the dish type the user asked for, say so instead of pretending. "
     "Reply in the same language as the user's message (English, Tagalog, or Taglish)."
 )
 TASK_MATCH = (
