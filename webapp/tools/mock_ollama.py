@@ -32,7 +32,8 @@ streaming path, the answer renderer, and the error handling end to end.
 
 1. Retrieval results above are real: they come from the recipe parquet.
 2. The wording below the retrieved cards is canned, not generated.
-3. Switch the answer mode to Demo to compare a deterministic answer."""
+3. Without a reachable Ollama the interface automatically falls back to
+   its deterministic demo answers."""
 
 
 def answer_for(payload: dict) -> str:
@@ -57,7 +58,8 @@ def answer_for(payload: dict) -> str:
         "- This reply is streamed by webapp/tools/mock_ollama.py to test the UI.\n\n"
         "1. The retrieved recipe cards are real and come from the parquet dataset.\n"
         "2. The answer wording is canned; it does not read the recipe instructions.\n"
-        "3. Switch to Demo mode to compare a deterministic, data-derived answer."
+        "3. Without a reachable Ollama, the interface falls back to its own\n"
+        "   deterministic demo answers."
     )
 
 

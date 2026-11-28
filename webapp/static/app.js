@@ -559,7 +559,6 @@ async function send(raw) {
     recipes: [],
     versions: [],
     constraints: null,
-    more_count: 0,
     moreRevealed: false,
     mode: null,
     suggestions: [],
@@ -602,7 +601,6 @@ async function send(raw) {
         assistant.recipes = data.recipes || [];
         assistant.versions = data.versions || [];
         assistant.constraints = data.constraints || null;
-        assistant.more_count = data.more_count || 0;
         assistant.mode = data.mode;
         updateMeta(assistant);
       },

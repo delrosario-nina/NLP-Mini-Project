@@ -6,7 +6,9 @@ A local, chat-first web UI for the Pinoy Recipe RAG pipeline. It lives entirely 
 ```
 webapp/
 ├─ app.py                 FastAPI entry point (routes + SSE streaming)
-├─ rag.py                 thin port of notebooks/04_rag_pipeline.ipynb
+├─ retrieval.py           parquet -> assets -> hybrid hits -> recipe cards
+├─ prompts.py             hits -> LLM prompt -> streamed answer (Ollama)
+├─ demo.py                deterministic answers + SSE helpers
 ├─ requirements.txt       fastapi, uvicorn, rank_bm25, pyarrow
 ├─ static/
 │  ├─ index.html

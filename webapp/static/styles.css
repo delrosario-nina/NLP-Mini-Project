@@ -981,13 +981,6 @@ button, textarea, input { font-family: inherit; }
   color: #b23e00;
 }
 
-.chip.unknown {
-  background: rgba(122, 115, 85, 0.12);
-  border-color: rgba(122, 115, 85, 0.3);
-  color: var(--muted);
-  font-weight: 500;
-}
-
 .recipe-columns {
   display: grid;
   grid-template-columns: 0.92fr 1.08fr;

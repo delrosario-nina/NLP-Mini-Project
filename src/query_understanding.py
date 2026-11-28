@@ -50,7 +50,6 @@ _TIME_NUMBERS = {
     "thirty": 30, "forty": 40, "forty-five": 45, "forty five": 45,
     "sixty": 60, "ninety": 90,
 }
-_TIME_UNITS_MIN = {"min", "mins", "minute", "minutes", "minuto", "minutos"}
 _TIME_UNITS_HOUR = {"hour", "hours", "hr", "hrs", "oras"}
 _NUMBER = r"\d+(?:\.\d+)?|" + "|".join(_TIME_NUMBERS)
 _TIME_RE = re.compile(
