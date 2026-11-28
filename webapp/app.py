@@ -135,7 +135,7 @@ def api_chat(body: ChatIn):
     user_texts = [turn["content"] for turn in turns if turn["role"] == "user"]
     pantry_texts = [body.pantry] + [text for text in user_texts[1:] if text != body.pantry]
     pantry_canon, pantry_unmapped = rag.accumulate_pantry(assets.lookup, pantry_texts)
-    constraints = rag.merge_constraints(*pantry_texts)
+    constraints = rag.merge_constraints(assets.lookup, pantry_texts)
     pantry_expanded = rag.expand_pantry(assets, pantry_canon)
 
     # A follow-up that adds ingredients or constraints is a pantry update and
@@ -155,12 +155,16 @@ def api_chat(body: ChatIn):
 
     search_text = rag.retrieval_query(body.pantry, last_user, assets.lookup)
 
-    # Retrieve a wider candidate pool, then apply diet/time filters on top so
-    # "vegetarian, under 30 minutes" can skip several irrelevant hits. Diets
-    # need the widest pool: most retrieved dishes usually contain meat.
+    # Retrieve a wider candidate pool, then apply diet/time/category/allergen
+    # filters on top so "vegetarian soup, under 30 minutes" can skip several
+    # irrelevant hits. Diets need the widest pool: most dishes contain meat.
     if constraints["diet"]:
         pool_k = 24
-    elif constraints["max_minutes"] is not None:
+    elif (
+        constraints["max_minutes"] is not None
+        or constraints["category"]
+        or constraints["allergens"]
+    ):
         pool_k = 12
     else:
         pool_k = body.k

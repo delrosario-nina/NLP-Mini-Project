@@ -307,14 +307,24 @@ function constraintChips(constraints) {
   if (!constraints) return "";
   const chips = [];
   if (constraints.diet) chips.push(`<span class="chip c-diet">${esc(constraints.diet)}</span>`);
+  if (constraints.category) chips.push(`<span class="chip c-type">${esc(constraints.category)}</span>`);
   if (constraints.max_minutes != null) {
     chips.push(`<span class="chip c-time">≤ ${constraints.max_minutes} min</span>`);
+  }
+  if (constraints.allergens && constraints.allergens.length) {
+    chips.push(`<span class="chip c-warn">no ${constraints.allergens.map(esc).join(", ")}</span>`);
   }
   if (constraints.diet_fallback) {
     chips.push(`<span class="chip c-warn">no ${esc(constraints.diet)} match — closest shown</span>`);
   }
+  if (constraints.category_fallback) {
+    chips.push(`<span class="chip c-warn">no ${esc(constraints.category)} dish — closest shown</span>`);
+  }
   if (constraints.time_fallback) {
     chips.push(`<span class="chip c-warn">over your time budget</span>`);
+  }
+  if (constraints.allergen_fallback) {
+    chips.push(`<span class="chip c-warn">all matches contain your allergens</span>`);
   }
   return chips.length ? `<div class="constraint-row">${chips.join("")}</div>` : "";
 }
@@ -324,29 +334,36 @@ function recipeBlock(message) {
   if (!recipes.length) return "";
 
   const rest = recipes.slice(1);
+  const versions = message.versions || [];
   const revealed = Boolean(message.moreRevealed);
   const parts = ['<div class="recipe-stack">'];
 
-  parts.push(`<div class="recipe-strip primary">${recipeMini(recipes[0])}</div>`);
+  if (revealed && (rest.length || versions.length)) {
+    // One line, in order: the primary, its versions, then the other matches.
+    const ordered = [recipes[0], ...versions, ...rest];
+    parts.push(`<div class="recipe-strip">${ordered
+      .map((recipe) => recipeMini(recipe, recipe.is_version ? "version" : undefined))
+      .join("")}</div>`);
+  } else {
+    parts.push(`<div class="recipe-strip primary">${recipeMini(recipes[0])}</div>`);
 
-  if (message.versions && message.versions.length) {
-    parts.push(
-      `<div class="version-wrap">` +
-      `<p class="version-label">Other versions of this dish</p>` +
-      `<div class="recipe-strip versions">${message.versions
-        .map((recipe) => recipeMini(recipe, "version"))
-        .join("")}</div>` +
-      `</div>`
-    );
-  }
+    if (versions.length) {
+      parts.push(
+        `<div class="version-wrap">` +
+        `<p class="version-label">Other versions of this dish</p>` +
+        `<div class="recipe-strip versions">${versions
+          .map((recipe) => recipeMini(recipe, "version"))
+          .join("")}</div>` +
+        `</div>`
+      );
+    }
 
-  if (rest.length) {
-    parts.push(
-      `<div class="recipe-strip more" ${revealed ? "" : "hidden"}>` +
-      rest.map((recipe) => recipeMini(recipe)).join("") +
-      `</div>`
-    );
-    if (!revealed) {
+    if (rest.length) {
+      parts.push(
+        `<div class="recipe-strip more" hidden>` +
+        rest.map((recipe) => recipeMini(recipe)).join("") +
+        `</div>`
+      );
       const word = rest.length === 1 ? "recipe" : "recipes";
       parts.push(`<button class="more-btn" type="button" data-more>Show ${rest.length} more ${word}</button>`);
     }

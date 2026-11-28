@@ -254,6 +254,97 @@ _DIET_RES: list[tuple[str, re.Pattern]] = [
     ),
 ]
 
+# Negations come first: "no longer a vegetarian" still contains the word
+# "vegetarian", so the positive patterns must not run when a negation matches.
+_DIET_NEGATION = re.compile(
+    r"no\s+longer\s+(?:a\s+)?(?:vegetarian|vegan|pescatarian|pescetarian|veggie|veg)\b"
+    r"|not\s+(?:a\s+)?(?:vegetarian|vegan|pescatarian|pescetarian|veggie|veg)\b"
+    r"|never\s+(?:been\s+)?(?:a\s+)?(?:vegetarian|vegan)\b"
+    r"|quit\s+being\s+(?:a\s+)?(?:vegetarian|vegan|pescetarian)"
+    r"|stopped\s+being\s+(?:a\s+)?(?:vegetarian|vegan)"
+    r"|hindi\s+(?:na\s+)?(?:ako\s+)?(?:vegetarian|vegan|veggie|veg)\b"
+    r"|\beat(?:ing)?\s+meat\s+(?:again|now)\b"
+    r"|\bi\s+(?:can|do)\s+eat\s+meat\b"
+    r"|kumakain\s+na\s+(?:ulit\s+)?ng\s+karne",
+    re.IGNORECASE,
+)
+
+# Clearing a stated time budget ("no time limit", "take as long as needed").
+_TIME_CLEAR_RE = re.compile(
+    r"no\s+time\s+limit|any\s+amount\s+of\s+time|time\s+(?:doesn'?t|does\s+not)\s+matter"
+    r"|no\s+rush|as\s+long\s+as\s+(?:it\s+takes|needed|you\s+want)"
+    r"|kahit\s+gaano\s+katagal",
+    re.IGNORECASE,
+)
+
+# Dish types: what the user asks for -> how to recognise it in recipe names.
+DISH_CATEGORIES: dict[str, tuple[re.Pattern, re.Pattern]] = {
+    "soup": (
+        re.compile(r"\bsoup\b|\bsabaw\b|\bsinigang\b|\bnilaga\b|\bbroth\b", re.I),
+        re.compile(
+            r"soup|sinigang|nilaga|sabaw|bulalo|batchoy|tinola|binacol|arroz caldo"
+            r"|lugaw|goto\b|congee|mami\b|sopas",
+            re.I,
+        ),
+    ),
+    "stew": (
+        re.compile(
+            r"\bstew\b|\bestofado\b|\bkaldereta\b|\bcaldereta\b|\bkare.?kare\b|\bginataan\b",
+            re.I,
+        ),
+        re.compile(
+            r"stew|kaldereta|caldereta|kare|afritada|mechado|humba|estofado|ginataan"
+            r"|sarciado|pochero|puchero|morcon|binagoongan|bopis|dinuguan",
+            re.I,
+        ),
+    ),
+    "breakfast": (
+        re.compile(r"\bbreakfast\b|\balmusal\b|\bsilog\b|\bmorning\b", re.I),
+        re.compile(
+            r"silog|breakfast|champorado|lugaw|goto\b|arroz caldo|congee|tocino"
+            r"|\btapa\b|daing|tuyo|longanisa|longganisa|saluyot",
+            re.I,
+        ),
+    ),
+    "noodles": (
+        re.compile(
+            r"\bnoodles?\b|\bpancit\b|\bpasta\b|\bspaghetti\b|\bmami\b|\blomi\b"
+            r"|\bsotanghon\b|\bbihon\b|\bcanton\b",
+            re.I,
+        ),
+        re.compile(
+            r"pancit|noodle|spaghetti|pasta|mami\b|lomi|sotanghon|bihon|canton"
+            r"|carbonara|palabok|malabon|misua|pad thai|chow mein",
+            re.I,
+        ),
+    ),
+    "fried rice": (
+        re.compile(r"fried\s+rice|\bsinangag\b", re.I),
+        re.compile(r"fried\s+rice|sinangag|java\s+rice|garlic\s+rice", re.I),
+    ),
+    "grilled": (
+        re.compile(r"\bgrill(?:ed|s)?\b|\binasal\b|\bbbq\b|\bbarbecue\b|\binihaw\b", re.I),
+        re.compile(r"grill|inasal|bbq|barbecue|inihaw", re.I),
+    ),
+    "dessert": (
+        re.compile(
+            r"\bdessert\b|\bpanghimagas\b|\bmerienda\b|\bsnack\b|\bsweets?\b|\bkakanin\b",
+            re.I,
+        ),
+        re.compile(
+            r"dessert|halaya|flan|cake|bibingka|\bbiko\b|kutsinta|pichi|leche|ginataan"
+            r"|minatamis|carioca|turon|banana\s+cue|camote\s+cue|maruya|palitaw|sapin"
+            r"|buko\s+salad|fruit\s+salad|halo.?halo|ice\s+cream|pudding|polvoron"
+            r"|pastillas|yema|ginataang|suman|puto\b|kutsinta|ensaymada|spanish\s+bread",
+            re.I,
+        ),
+    ),
+    "salad": (
+        re.compile(r"\bsalad\b|\bensalada\b", re.I),
+        re.compile(r"salad|ensalada|appetizer|atsara", re.I),
+    ),
+}
+
 # Canonical exclusion sets per diet, in diet order: vegan > vegetarian > pescatarian.
 _MEAT = {
     "pork", "pork_belly", "pork_hock", "ground_pork", "pork_ribs", "pork_shoulder",
@@ -283,22 +374,45 @@ _DIET_EXCLUSIONS = {
     "pescatarian": _MEAT | _POULTRY,
 }
 
+# Allergy phrases -> banned canonicals. Groups expand words that are not
+# themselves a canonical ingredient ("seafood allergy" bans the seafood set).
+_ALLERGEN_RE = re.compile(
+    r"(?:allergic|allergy)(?:\s+ako)?\s+(?:to\s+|sa\s+)?"
+    r"([a-z][a-z\s'-]{1,60}?)(?=\bbut\b|[,.;!?]|$)",
+    re.IGNORECASE,
+)
+_ALLERGEN_SUFFIX_RE = re.compile(
+    r"([a-z][a-z\s]{1,30}?)\s+allerg(?:y|ic)", re.IGNORECASE
+)
+_ALLERGEN_GROUP_MAP: dict[str, set] = {
+    "seafood": _SEAFOOD,
+    "shellfish": {"shrimp", "squid", "crab", "mussel", "clams"},
+    "dairy": {
+        "milk", "evaporated milk", "condensed milk", "cheese", "kesong puti",
+        "butter", "margarine", "all purpose cream",
+    },
+    "egg": {"egg", "quail egg", "salted egg"},
+    "peanut": {"peanut", "peanut butter"},
+}
 
-def parse_constraints(text: str) -> dict:
-    """Read the time budget and diet out of a user message.
 
-    Returns {"diet": str|None, "max_minutes": int|None} so retrieval can filter
-    before any answer is written. Constraint phrases are ignored for ingredient
-    matching (they are not ingredients), which parse_query already handles.
-    """
+def _allergen_bans(phrase: str, lookup: dict) -> list[str]:
+    """Turn an allergy phrase into canonical names to ban."""
+    phrase = phrase.strip().lower()
+    bans: list[str] = []
+    canon, _ = parse_query(phrase, lookup)
+    bans.extend(canon)
+    for word, group in _ALLERGEN_GROUP_MAP.items():
+        if word in phrase:
+            for item in group:
+                if item not in bans:
+                    bans.append(item)
+    return bans
+
+
+def _minutes_in(text: str) -> int | None:
+    """The time budget stated in ONE message, or None if it states none."""
     lowered = str(text).lower()
-
-    diet = None
-    for name, pattern in _DIET_RES:
-        if pattern.search(lowered):
-            diet = name
-            break
-
     minutes: list[float] = []
     for value, unit in _TIME_RE.findall(lowered):
         number = _TIME_NUMBERS.get(value.lower())
@@ -311,26 +425,89 @@ def parse_constraints(text: str) -> dict:
         minutes.append(number * multiplier)
     if _HALF_HOUR_RE.search(lowered):
         minutes.append(30.0)
+    return int(min(minutes)) if minutes else None
+
+
+def parse_constraints(text: str, lookup: dict | None = None) -> dict:
+    """Read diet, time budget, dish type, and allergies from ONE message.
+
+    Returns per-message findings; merge_constraints resolves them across the
+    conversation. Negations are checked first: "no longer a vegetarian" still
+    contains the word "vegetarian", so the positive patterns must not run.
+    """
+    lowered = str(text).lower()
+
+    diet = None
+    diet_negated = False
+    if _DIET_NEGATION.search(lowered):
+        diet_negated = True
+    else:
+        for name, pattern in _DIET_RES:
+            if pattern.search(lowered):
+                diet = name
+                break
+
+    category = None
+    for name, (query_re, _name_re) in DISH_CATEGORIES.items():
+        if query_re.search(lowered):
+            category = name
+            break
+
+    allergens: list[str] = []
+    if lookup is not None:
+        for match in _ALLERGEN_RE.finditer(lowered):
+            for ban in _allergen_bans(match.group(1), lookup):
+                if ban not in allergens:
+                    allergens.append(ban)
+        for match in _ALLERGEN_SUFFIX_RE.finditer(lowered):
+            for ban in _allergen_bans(match.group(1), lookup):
+                if ban not in allergens:
+                    allergens.append(ban)
 
     return {
         "diet": diet,
-        "max_minutes": int(min(minutes)) if minutes else None,
+        "diet_negated": diet_negated,
+        "max_minutes": _minutes_in(lowered),
+        "time_cleared": bool(_TIME_CLEAR_RE.search(lowered)),
+        "category": category,
+        "allergens": allergens,
     }
 
 
-def merge_constraints(*texts: str) -> dict:
-    """Union constraints across pantry and the latest follow-up."""
-    diet = None
-    max_minutes: list[int] = []
+def merge_constraints(lookup: dict, texts: Sequence[str]) -> dict:
+    """Resolve constraints across the conversation, most recent statement wins.
+
+    Diets and time budgets are REPLACED by the latest statement (and can be
+    cleared by "no longer a vegetarian" / "no time limit"), so old tags never
+    linger. Allergies accumulate: they are not something one talks oneself
+    out of between messages.
+    """
+    diet: str | None = None
+    max_minutes: int | None = None
+    category: str | None = None
+    allergens: list[str] = []
+
     for text in texts:
-        found = parse_constraints(text or "")
-        if found["diet"]:
+        found = parse_constraints(str(text or ""), lookup)
+        if found["diet_negated"]:
+            diet = None
+        elif found["diet"]:
             diet = found["diet"]
-        if found["max_minutes"] is not None:
-            max_minutes.append(found["max_minutes"])
+        if found["time_cleared"]:
+            max_minutes = None
+        elif found["max_minutes"] is not None:
+            max_minutes = found["max_minutes"]
+        if found["category"]:
+            category = found["category"]
+        for ban in found["allergens"]:
+            if ban not in allergens:
+                allergens.append(ban)
+
     return {
         "diet": diet,
-        "max_minutes": min(max_minutes) if max_minutes else None,
+        "max_minutes": max_minutes,
+        "category": category,
+        "allergens": allergens,
     }
 
 
@@ -377,24 +554,35 @@ def pantry_changed(
     if [c for c in all_canon if c not in prior_canon]:
         return True
 
-    prior_constraints = merge_constraints(*prior_texts)
-    all_constraints = merge_constraints(*all_texts)
+    prior_constraints = merge_constraints(lookup, prior_texts)
+    all_constraints = merge_constraints(lookup, all_texts)
+    if len(all_constraints["allergens"]) > len(prior_constraints["allergens"]):
+        return True
     return (
         prior_constraints["diet"] != all_constraints["diet"]
         or prior_constraints["max_minutes"] != all_constraints["max_minutes"]
+        or prior_constraints["category"] != all_constraints["category"]
     )
 
 
 def apply_constraints(
     assets: Assets, hits, pantry: Sequence[str], constraints: dict
 ) -> tuple[list, dict]:
-    """Filter retrieved recipes by diet and time, with graceful fallback.
+    """Filter retrieved recipes by diet, time, dish type, and allergies.
 
     Returns (filtered_hits, report). If a filter would remove everything, it is
     skipped and flagged in the report so the answer can say so honestly.
     """
-    report = {"diet": constraints["diet"], "max_minutes": constraints["max_minutes"],
-              "diet_fallback": False, "time_fallback": False}
+    report = {
+        "diet": constraints["diet"],
+        "max_minutes": constraints["max_minutes"],
+        "category": constraints["category"],
+        "allergens": list(constraints["allergens"]),
+        "diet_fallback": False,
+        "time_fallback": False,
+        "category_fallback": False,
+        "allergen_fallback": False,
+    }
     kept = list(hits)
 
     if constraints["diet"]:
@@ -418,6 +606,26 @@ def apply_constraints(
             kept = survivors
         else:
             report["time_fallback"] = True
+
+    if constraints["category"]:
+        _, name_re = DISH_CATEGORIES[constraints["category"]]
+        survivors = [
+            hit for hit in kept if name_re.search(str(assets.df.iloc[hit[0]]["recipe_name"]))
+        ]
+        if survivors:
+            kept = survivors
+        else:
+            report["category_fallback"] = True
+
+    if constraints["allergens"]:
+        banned = set(constraints["allergens"])
+        survivors = [
+            hit for hit in kept if not (banned & assets.df.iloc[hit[0]]["canon_match"])
+        ]
+        if survivors:
+            kept = survivors
+        else:
+            report["allergen_fallback"] = True
 
     return kept, report
 
@@ -577,7 +785,7 @@ def format_context(
 
 
 def _constraint_prompt(constraints: dict | None) -> str:
-    """One prompt line describing the user's diet and time budget, if any."""
+    """One prompt line describing the user's filters, if any."""
     if not constraints:
         return ""
     parts = []
@@ -585,6 +793,14 @@ def _constraint_prompt(constraints: dict | None) -> str:
         parts.append(f"The user is {constraints['diet']}.")
     if constraints.get("max_minutes") is not None:
         parts.append(f"The user has at most {constraints['max_minutes']} minutes to cook.")
+    if constraints.get("category"):
+        parts.append(f"The user asked for a {constraints['category']} dish.")
+    if constraints.get("allergens"):
+        parts.append(
+            "The user is allergic to: "
+            + ", ".join(constraints["allergens"])
+            + ". Never recommend those."
+        )
     if constraints.get("diet_fallback"):
         parts.append(
             "No fully diet-friendly recipe matched, so the closest one is included; "
@@ -594,6 +810,16 @@ def _constraint_prompt(constraints: dict | None) -> str:
         parts.append(
             "No recipe fits the time budget, so the fastest close match is included; "
             "say so honestly."
+        )
+    if constraints.get("category_fallback"):
+        parts.append(
+            "No matching dish of that type exists, so the closest one is included; "
+            "say so honestly."
+        )
+    if constraints.get("allergen_fallback"):
+        parts.append(
+            "Every close match contains the allergens; say so honestly and tell "
+            "the user to adapt the recipe."
         )
     return ("\n" + "\n".join(parts) + "\n") if parts else ""
 
@@ -923,21 +1149,35 @@ def summarize_hits(assets: Assets, hits, query_canon: Sequence[str]) -> list[dic
 
 
 def _constraint_notes(constraints: dict) -> list[str]:
-    """Honest one-liners about how diet/time filters were applied."""
+    """Honest one-liners about how the filters were applied."""
     notes = []
-    if constraints["diet"]:
+    if constraints.get("diet"):
         notes.append(f"Diet: {constraints['diet']}.")
-    if constraints["max_minutes"] is not None:
+    if constraints.get("max_minutes") is not None:
         notes.append(f"Time budget: {constraints['max_minutes']} minutes or less.")
+    if constraints.get("category"):
+        notes.append(f"Dish type: {constraints['category']}.")
+    if constraints.get("allergens"):
+        notes.append("Allergies: excludes " + ", ".join(constraints["allergens"]) + ".")
     if constraints.get("diet_fallback"):
         notes.append(
-            "No fully " + constraints["diet"] + "-friendly recipe matched those "
+            "No fully " + str(constraints.get("diet")) + "-friendly recipe matched those "
             "ingredients, so here is the closest one. Ask for another if needed."
         )
     if constraints.get("time_fallback"):
         notes.append(
-            f"Nothing fits within {constraints['max_minutes']} minutes, so here "
+            f"Nothing fits within {constraints.get('max_minutes')} minutes, so here "
             "is the fastest close match."
+        )
+    if constraints.get("category_fallback"):
+        notes.append(
+            f"No {constraints.get('category')} dish matched those ingredients, so here "
+            "is the closest one."
+        )
+    if constraints.get("allergen_fallback"):
+        notes.append(
+            "Every close match contains your allergens, so here is the best of them "
+            "— please adapt it yourself."
         )
     return notes
 

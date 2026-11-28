@@ -705,6 +705,12 @@ button, textarea, input { font-family: inherit; }
   color: #8a6410;
 }
 
+.chip.c-type {
+  background: rgba(196, 216, 96, 0.3);
+  border-color: rgba(122, 115, 85, 0.5);
+  color: #4a5230;
+}
+
 .chip.c-warn {
   background: rgba(232, 84, 0, 0.12);
   border-color: rgba(232, 84, 0, 0.35);
