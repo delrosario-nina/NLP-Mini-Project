@@ -146,7 +146,9 @@ def api_chat(body: ChatIn):
         pool_k = body.k
     hits, _, _ = rag.search(assets, search_text, body.method, pool_k)
     hits, constraint_report = rag.apply_constraints(assets, hits, pantry_expanded, constraints)
-    hits = hits[: body.k]
+    # Retrieval picks the candidates; pantry fit decides which is shown first
+    # (most matched, fewest missing, fastest — the user's exact expectation).
+    hits = rag.rank_by_pantry_fit(assets, hits, pantry_expanded)[: body.k]
 
     recipes = rag.summarize_hits(assets, hits, pantry_expanded)
     versions = (

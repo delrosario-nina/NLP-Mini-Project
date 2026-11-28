@@ -42,6 +42,7 @@ if str(ROOT / "src") not in sys.path:
 
 from dish_groups import (  # noqa: E402
     build_groups,
+    ingredient_importance,
     normalize_name,
     version_facts,
     version_positions,
@@ -373,6 +374,29 @@ def apply_constraints(
             report["time_fallback"] = True
 
     return kept, report
+
+
+def rank_by_pantry_fit(assets: Assets, hits, pantry: Sequence[str]):
+    """Order retrieved recipes by how well they use the user's pantry.
+
+    Retrieval (hybrid BM25 + dense) decides which dishes are candidates; this
+    decides which one to SHOW first: most (importance-weighted) matched
+    ingredients, then fewest missing, then fastest, then retrieval score.
+    So when two versions match the same pantry items, the one missing fewer
+    ingredients wins.
+    """
+    def key(hit):
+        pos, score = hit
+        facts = version_facts(assets.df.iloc[pos], pantry)
+        matched_weight = sum(ingredient_importance(item) for item in facts["matched"])
+        return (
+            -matched_weight,
+            facts["missing_cost"],
+            facts["budget_minutes"],
+            -score,
+        )
+
+    return sorted(hits, key=key)
 
 
 def version_cards(assets: Assets, top_pos: int, pantry: Sequence[str], limit: int = 3) -> list[dict]:
