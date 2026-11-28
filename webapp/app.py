@@ -142,11 +142,16 @@ def api_chat(body: ChatIn):
     # deserves a fresh recommendation; other follow-ups are questions about
     # the current recommendation.
     updated = is_followup = False
+    last_additions: list[str] = []
     if len(pantry_texts) > 1:
         is_followup = True
         updated = rag.pantry_changed(
             assets.lookup, pantry_texts[:-1], pantry_texts
         )
+        if updated:
+            prior_canon, _ = rag.accumulate_pantry(assets.lookup, pantry_texts[:-1])
+            last_canon, _ = rag.parse_query(last_user, assets.lookup)
+            last_additions = [c for c in last_canon if c not in prior_canon]
 
     search_text = rag.retrieval_query(body.pantry, last_user, assets.lookup)
 
@@ -203,10 +208,12 @@ def api_chat(body: ChatIn):
             else:
                 # A pantry update ("actually i now have pork as well") gets a
                 # fresh recommendation against the accumulated pantry, exactly
-                # like a first turn.
+                # like a first turn, and says what was added so the user can
+                # see the update registered.
                 text = rag.demo_answer(
                     assets, hits, pantry_expanded,
                     constraints=constraint_report, more_count=more_count,
+                    pantry_additions=last_additions if updated else (),
                 )
             for piece in rag.chunk_text(text):
                 yield rag.sse("token", {"text": piece})

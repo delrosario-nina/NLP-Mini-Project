@@ -948,6 +948,7 @@ def demo_answer(
     query_canon: Sequence[str],
     constraints: dict | None = None,
     more_count: int = 0,
+    pantry_additions: Sequence[str] = (),
 ) -> str:
     """Deterministic answer computed from the top recipe. No model call.
 
@@ -965,7 +966,14 @@ def demo_answer(
     constraints = constraints or {}
     row = assets.df.iloc[hits[0][0]]
     facts = version_facts(row, query_canon)
-    lines = [f"Recommended: {facts['name']}", f"- Total time: ~{facts['display_time']}"]
+    lines = ["Recommended: " + facts["name"]]
+    if pantry_additions:
+        lines.append(
+            "- Updated pantry: now includes "
+            + ", ".join(pantry_additions)
+            + ". Here is the best dish for it."
+        )
+    lines.append(f"- Total time: ~{facts['display_time']}")
     if _servings_text(facts["servings"]):
         lines.append(f"- Servings: {_servings_text(facts['servings'])}")
 
