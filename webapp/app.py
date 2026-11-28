@@ -167,10 +167,18 @@ def api_chat(body: ChatIn):
                 {
                     "message": (
                         f"Ollama is not reachable at {info['host']}. "
-                        "Start it with 'ollama serve' and try again."
+                        + (
+                            "Check your internet connection and try again."
+                            if rag.ollama_is_remote(info["host"])
+                            else "Start it with 'ollama serve' and try again."
+                        )
                     )
                 },
             )
+            yield rag.sse("done", {"mode": "llm", "ok": False})
+            return
+        if info.get("auth_error"):
+            yield rag.sse("error", {"message": info["auth_error"]})
             yield rag.sse("done", {"mode": "llm", "ok": False})
             return
         if not info["has_model"]:
@@ -178,8 +186,12 @@ def api_chat(body: ChatIn):
                 "error",
                 {
                     "message": (
-                        f"Ollama is running, but {rag.LLM_MODEL} is not pulled. "
-                        f"Run: ollama pull {rag.LLM_MODEL}"
+                        f"Ollama at {info['host']} does not offer {rag.LLM_MODEL}. "
+                        + (
+                            f"Set LLM_MODEL to a model from {info['host']}/api/tags."
+                            if rag.ollama_is_remote(info["host"])
+                            else f"Run: ollama pull {rag.LLM_MODEL}"
+                        )
                     )
                 },
             )
