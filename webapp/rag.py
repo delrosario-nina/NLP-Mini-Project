@@ -10,14 +10,6 @@ HOW TO USE
         python webapp/tools/mock_ollama.py --port 11435
         $env:OLLAMA_HOST = "http://localhost:11435"
 
-    Ollama Cloud instead of a local install (key from ollama.com/settings/keys):
-        $env:OLLAMA_HOST = "https://ollama.com"
-        $env:OLLAMA_API_KEY = "<your key>"
-        $env:LLM_MODEL = "gpt-oss:20b"   # any model listed at ollama.com/api/tags
-
-    The ollama client picks up all three variables automatically; nothing is
-    hard-coded, so the same code serves local, LAN, and cloud.
-
 This module is a thin port of notebooks/04_rag_pipeline.ipynb. The notebook is
 still the source of truth for retrieval behaviour; if the scoring changes there,
 mirror the change here.
@@ -32,15 +24,13 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import re
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Sequence
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
@@ -53,9 +43,8 @@ if str(ROOT / "src") not in sys.path:
 from dish_groups import version_facts  # noqa: E402
 from ingredient_utils import build_lookup, load_alias_map, normalize_text  # noqa: E402
 
-# Same constants as notebook 04. LLM_MODEL can be overridden for Ollama Cloud,
-# e.g. $env:LLM_MODEL = "gpt-oss:20b" with $env:OLLAMA_HOST = "https://ollama.com".
-LLM_MODEL = os.environ.get("LLM_MODEL", "llama3.2:3b")
+# Same constants as notebook 04.
+LLM_MODEL = "llama3.2:3b"
 EMBED_MODEL = "intfloat/multilingual-e5-small"
 TOP_K = 3
 RRF_K = 60
@@ -425,42 +414,25 @@ def generate(messages: list[dict]) -> Iterator[str]:
 
 def ollama_host() -> str:
     """Resolve OLLAMA_HOST the same way the Python client does."""
+    import os
+
     host = os.environ.get("OLLAMA_HOST", "http://localhost:11434").strip()
     if not host.startswith(("http://", "https://")):
         host = "http://" + host
     return host.rstrip("/")
 
 
-def ollama_is_remote(host: str | None = None) -> bool:
-    """True when OLLAMA_HOST points at another machine or Ollama Cloud."""
-    host = (host or ollama_host()).lower()
-    return not any(
-        host.startswith(f"{scheme}://{machine}")
-        for scheme in ("http", "https")
-        for machine in ("localhost", "127.0.0.1", "0.0.0.0", "[::1]")
-    )
-
-
-def ollama_api_key() -> str:
-    """The OLLAMA_API_KEY value, when one is configured (Ollama Cloud)."""
-    return os.environ.get("OLLAMA_API_KEY", "").strip()
-
-
 _OLLAMA_CACHE: dict[str, object] = {"at": 0.0, "host": None, "info": None}
 _OLLAMA_TTL = 5.0
 
 
-def ollama_info(timeout: float | None = None, force: bool = False) -> dict:
+def ollama_info(timeout: float = 1.5, force: bool = False) -> dict:
     """Cheap readiness probe for the health endpoint and the UI banner.
 
     Results are cached for a few seconds: every chat turn asks whether Ollama is
     up, and probing a closed port would otherwise add a timeout to each request.
-    Remote hosts (a groupmate's machine or https://ollama.com) get a longer
-    timeout than a localhost probe.
     """
     host = ollama_host()
-    if timeout is None:
-        timeout = 4.0 if ollama_is_remote(host) else 1.5
     now = time.monotonic()
     cached = _OLLAMA_CACHE["info"]
     if (
@@ -471,27 +443,9 @@ def ollama_info(timeout: float | None = None, force: bool = False) -> dict:
     ):
         return dict(cached)  # type: ignore[arg-type]
 
-    request = Request(f"{host}/api/tags")
-    key = ollama_api_key()
-    if key:
-        request.add_header("Authorization", f"Bearer {key}")
-
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with urlopen(f"{host}/api/tags", timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        # 401/403 means the host is there but the key was rejected; that is
-        # a configuration problem the chat call should explain, not "offline".
-        if key and exc.code in (401, 403):
-            info = {
-                "available": True,
-                "host": host,
-                "models": [],
-                "has_model": False,
-                "auth_error": "API key was rejected. Check OLLAMA_API_KEY.",
-            }
-        else:
-            info = {"available": False, "host": host, "models": [], "has_model": False}
     except Exception:
         info = {"available": False, "host": host, "models": [], "has_model": False}
     else:
@@ -515,41 +469,12 @@ def friendly_llm_error(exc: Exception) -> str:
     text = str(exc)
     lowered = text.lower()
     host = ollama_host()
-
-    if any(word in lowered for word in ("unauthorized", "invalid api key", "401")):
-        return (
-            "Ollama rejected the API key. Check that OLLAMA_API_KEY is set "
-            "correctly (create one at ollama.com/settings/keys) and that the "
-            "terminal running uvicorn has it."
-        )
-    if "402" in lowered or "usage credit" in lowered:
-        return (
-            "Ollama Cloud is reachable and the key is valid, but the account "
-            "has no usage credit. Add credits or subscribe at "
-            "https://ollama.com/plans, then try again. (Demo answers still "
-            "work without credit.)"
-        )
-    if any(word in lowered for word in ("forbidden", "403")):
-        return (
-            f"Ollama at {host} refused the request. If this is Ollama Cloud, "
-            "check your key's access and remaining credit on ollama.com."
-        )
     if any(word in lowered for word in ("connect", "connection", "refused", "timed out")):
-        if ollama_is_remote(host):
-            return (
-                f"Could not reach Ollama at {host}. Check your internet "
-                "connection and that the host is correct, then try again."
-            )
         return (
             f"Could not reach Ollama at {host}. Start it with 'ollama serve' "
             "and try again."
         )
     if "not found" in lowered or "pull" in lowered:
-        if ollama_is_remote(host):
-            return (
-                f"{host} does not offer {LLM_MODEL}. Pick a model from "
-                f"{host}/api/tags and set LLM_MODEL to its name."
-            )
         return f"Ollama is running, but {LLM_MODEL} is not available. Run: ollama pull {LLM_MODEL}"
     return f"Ollama call failed: {text}"
 
