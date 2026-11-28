@@ -128,12 +128,27 @@ def api_chat(body: ChatIn):
         else None
     )
 
-    # Query understanding: pantry canonicals, their generic parents, and the
-    # diet / time constraints the user stated anywhere in the conversation.
-    search_text = rag.retrieval_query(body.pantry, last_user, assets.lookup)
-    pantry_canon, pantry_unmapped = rag.parse_query(body.pantry, assets.lookup)
-    constraints = rag.merge_constraints(body.pantry, last_user)
+    # Query understanding. The pantry ACCUMULATES across the conversation: when
+    # the user later says "actually i now have pork as well", pork joins the
+    # canonical pantry so ranking, matched/missing facts, and the displayed
+    # card all reflect the current state, not the first message.
+    user_texts = [turn["content"] for turn in turns if turn["role"] == "user"]
+    pantry_texts = [body.pantry] + [text for text in user_texts[1:] if text != body.pantry]
+    pantry_canon, pantry_unmapped = rag.accumulate_pantry(assets.lookup, pantry_texts)
+    constraints = rag.merge_constraints(*pantry_texts)
     pantry_expanded = rag.expand_pantry(assets, pantry_canon)
+
+    # A follow-up that adds ingredients or constraints is a pantry update and
+    # deserves a fresh recommendation; other follow-ups are questions about
+    # the current recommendation.
+    updated = is_followup = False
+    if len(pantry_texts) > 1:
+        is_followup = True
+        updated = rag.pantry_changed(
+            assets.lookup, pantry_texts[:-1], pantry_texts
+        )
+
+    search_text = rag.retrieval_query(body.pantry, last_user, assets.lookup)
 
     # Retrieve a wider candidate pool, then apply diet/time filters on top so
     # "vegetarian, under 30 minutes" can skip several irrelevant hits. Diets
@@ -156,11 +171,18 @@ def api_chat(body: ChatIn):
     )
     more_count = max(0, len(hits) - 1)
 
+    # Honest pantry description for the prompt: the first message plus the
+    # ingredients the user mentioned later in the conversation.
+    first_canon, _ = rag.parse_query(body.pantry, assets.lookup)
+    later = [c for c in pantry_canon if c not in first_canon]
+    pantry_display = body.pantry
+    if later:
+        pantry_display += f" (also mentioned later: {', '.join(later)})"
+
     info = rag.ollama_info()
     use_llm = body.mode == "llm" or (
         body.mode == "auto" and info["available"] and info["has_model"]
     )
-    is_followup = len([turn for turn in turns if turn["role"] == "user"]) > 1
     meta = {
         "normalized": pantry_canon,
         "unmapped": pantry_unmapped,
@@ -174,11 +196,14 @@ def api_chat(body: ChatIn):
     def stream():
         if not use_llm:
             yield rag.sse("meta", {**meta, "mode": "demo"})
-            if is_followup:
+            if is_followup and not updated:
                 text = rag.demo_followup(
                     assets, hits, pantry_expanded, last_user, focus_row
                 )
             else:
+                # A pantry update ("actually i now have pork as well") gets a
+                # fresh recommendation against the accumulated pantry, exactly
+                # like a first turn.
                 text = rag.demo_answer(
                     assets, hits, pantry_expanded,
                     constraints=constraint_report, more_count=more_count,
@@ -218,7 +243,7 @@ def api_chat(body: ChatIn):
         try:
             messages = rag.build_chat_messages(
                 assets,
-                body.pantry,
+                pantry_display,
                 hits,
                 pantry_expanded,
                 turns,

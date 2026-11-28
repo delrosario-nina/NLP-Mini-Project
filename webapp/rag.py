@@ -339,6 +339,52 @@ def expand_pantry(assets: Assets, canon: Sequence[str]) -> list[str]:
     return expand_canonicals(list(canon), assets.parents)
 
 
+def accumulate_pantry(lookup: dict, texts: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Union of canonical ingredients mentioned across ALL user messages.
+
+    A conversation's pantry is not frozen at the first message: when the user
+    later says "actually i now have pork as well", pork joins the pantry so
+    ranking, matched/missing facts, and the displayed card all reflect it.
+    Unmapped tokens are only collected from messages that contributed at
+    least one canonical, so plain questions add no noise.
+    """
+    canon: list[str] = []
+    unmapped: list[str] = []
+    for text in texts:
+        found, left = parse_query(str(text), lookup)
+        if not found:
+            continue
+        for item in found:
+            if item not in canon:
+                canon.append(item)
+        for item in left:
+            if item not in unmapped:
+                unmapped.append(item)
+    return canon, unmapped
+
+
+def pantry_changed(
+    lookup: dict, prior_texts: Sequence[str], all_texts: Sequence[str]
+) -> bool:
+    """True when the latest message added ingredients or changed constraints.
+
+    Used to decide whether a follow-up is a plain question about the current
+    recommendation (keep the demo follow-up handler) or a pantry update that
+    deserves a fresh recommendation.
+    """
+    prior_canon, _ = accumulate_pantry(lookup, prior_texts)
+    all_canon, _ = accumulate_pantry(lookup, all_texts)
+    if [c for c in all_canon if c not in prior_canon]:
+        return True
+
+    prior_constraints = merge_constraints(*prior_texts)
+    all_constraints = merge_constraints(*all_texts)
+    return (
+        prior_constraints["diet"] != all_constraints["diet"]
+        or prior_constraints["max_minutes"] != all_constraints["max_minutes"]
+    )
+
+
 def apply_constraints(
     assets: Assets, hits, pantry: Sequence[str], constraints: dict
 ) -> tuple[list, dict]:
