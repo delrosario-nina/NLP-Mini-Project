@@ -522,6 +522,13 @@ def friendly_llm_error(exc: Exception) -> str:
             "correctly (create one at ollama.com/settings/keys) and that the "
             "terminal running uvicorn has it."
         )
+    if "402" in lowered or "usage credit" in lowered:
+        return (
+            "Ollama Cloud is reachable and the key is valid, but the account "
+            "has no usage credit. Add credits or subscribe at "
+            "https://ollama.com/plans, then try again. (Demo answers still "
+            "work without credit.)"
+        )
     if any(word in lowered for word in ("forbidden", "403")):
         return (
             f"Ollama at {host} refused the request. If this is Ollama Cloud, "
