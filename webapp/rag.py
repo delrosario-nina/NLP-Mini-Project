@@ -514,11 +514,15 @@ def format_context(
     max_chars: int = 1200,
     extra_rows: Sequence[int] = (),
 ) -> str:
-    """Render retrieved recipes for the prompt, plus an optional focused recipe."""
-    blocks = [
-        _context_block(assets, pos, query_canon, f"[Recipe {number}]", max_chars)
-        for number, (pos, _) in enumerate(hits, start=1)
-    ]
+    """Render retrieved recipes for the prompt, plus an optional focused recipe.
+
+    The first hit is the PRIMARY recipe the interface displays; the rest are
+    backups the model may only mention when the user asks for more options.
+    """
+    blocks = []
+    for number, (pos, _) in enumerate(hits, start=1):
+        label = "[Primary recipe]" if number == 1 else f"[Backup recipe {number}]"
+        blocks.append(_context_block(assets, pos, query_canon, label, max_chars))
     hit_positions = {pos for pos, _ in hits}
     for pos in extra_rows:
         if pos is not None and pos not in hit_positions:
@@ -548,6 +552,24 @@ def _constraint_prompt(constraints: dict | None) -> str:
     return ("\n" + "\n".join(parts) + "\n") if parts else ""
 
 
+def _primary_note(assets: Assets, hits, query_canon: Sequence[str]) -> str:
+    """Tell the model which recipe the interface is showing as the top card.
+
+    Retrieval + pantry fit already picked the best match deterministically;
+    the model's job is to present it, not to re-decide. Without this line the
+    model may recommend a different context recipe than the displayed card.
+    """
+    if not hits:
+        return ""
+    facts = version_facts(assets.df.iloc[hits[0][0]], query_canon)
+    return (
+        "The [Primary recipe] above is the recommendation the interface is already "
+        f"showing the user: '{facts['name']}'. Present that dish as your "
+        "recommendation. The [Backup recipe] entries are NOT recommendations — "
+        "mention them only if the user explicitly asks for more options."
+    )
+
+
 def _context_prompt(
     pantry: str,
     query_canon: Sequence[str],
@@ -555,6 +577,7 @@ def _context_prompt(
     with_tasks: bool,
     constraints: dict | None = None,
     versions_note: str = "",
+    primary_note: str = "",
 ) -> str:
     base = (
         f"The user has these ingredients: {pantry}\n"
@@ -564,15 +587,17 @@ def _context_prompt(
     )
     if versions_note:
         base += f"\n\n{versions_note}"
+    if primary_note:
+        base += f"\n\n{primary_note}"
     if not with_tasks:
         return base + "\n\nUse only these recipes. Answer the user's latest message."
 
     return (
         base
         + "\n\nTasks:\n"
-        "1. Recommend the single best matching dish from the context and briefly explain "
-        "why it fits. Do not list the other retrieved recipes unless the user asks for "
-        "more options.\n"
+        "1. Present the [Primary recipe] as your recommendation and briefly explain why "
+        "it fits (it matches the most pantry ingredients and misses the fewest). Do not "
+        "present a [Backup recipe] unless the user asks for more options.\n"
         + TASK_MATCH
         + "\n3. For each missing ingredient, suggest a substitute only if it is reasonable; otherwise say there is none.\n"
         "4. Rewrite the cooking instructions as short numbered steps. Keep all quantities and times."
@@ -622,6 +647,7 @@ def build_messages(
                 with_tasks=True,
                 constraints=constraints,
                 versions_note=_versions_note(assets, top_pos, query_canon),
+                primary_note=_primary_note(assets, hits, query_canon),
             ),
         },
     ]
@@ -672,6 +698,7 @@ def build_chat_messages(
                     with_tasks=True,
                     constraints=constraints,
                     versions_note=versions_note,
+                    primary_note=_primary_note(assets, hits, query_canon),
                 ),
             }
         )

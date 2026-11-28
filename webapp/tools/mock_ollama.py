@@ -36,7 +36,7 @@ streaming path, the answer renderer, and the error handling end to end.
 
 
 def answer_for(payload: dict) -> str:
-    """Use the first retrieved recipe name so the mock answer looks contextual."""
+    """Use the primary retrieved recipe name so the mock answer looks contextual."""
     messages = payload.get("messages") or []
     prompt = "\n".join(
         str(message.get("content", ""))
@@ -44,7 +44,9 @@ def answer_for(payload: dict) -> str:
         if message.get("role") == "user"
     )
 
-    match = re.search(r"\[Recipe 1\]\s*(.+)", prompt)
+    match = re.search(r"\[Primary recipe\]\s*(.+)", prompt) or re.search(
+        r"\[Recipe 1\]\s*(.+)", prompt
+    )
     if not match:
         return FALLBACK
 
