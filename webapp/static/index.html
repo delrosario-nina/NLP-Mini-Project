@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lutong Bahay — Pinoy Recipe RAG</title>
+  <meta name="description" content="Chat with a Filipino recipe assistant that only uses retrieved recipes.">
+  <link rel="icon" type="image/png" href="/static/rat-pizza.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,600&family=Karla:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <div class="app" id="app">
+    <aside class="sidebar" id="sidebar" aria-label="Conversations">
+      <div class="sidebar-head">
+        <a class="brand" href="/">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="/static/rat-pizza.png" alt="">
+          </span>
+          <span class="brand-text">
+            <span class="brand-name">Lutong Bahay</span>
+            <span class="brand-sub">Pinoy Recipe RAG</span>
+          </span>
+        </a>
+      </div>
+
+      <button class="new-chat" id="new-chat" type="button">
+        <span class="plus" aria-hidden="true">+</span> New chat
+      </button>
+
+      <div class="conv-wrap">
+        <p class="section-label">Conversations</p>
+        <nav class="conv-list" id="conv-list" aria-label="Saved conversations"></nav>
+        <p class="conv-empty" id="conv-empty">Your chats will appear here.</p>
+      </div>
+
+      <div class="sidebar-foot">
+        <button class="health-chip" id="health-chip" type="button" title="Re-check the local server">
+          <span class="dot"></span>
+          <span id="health-text">checking…</span>
+        </button>
+        <p class="sidebar-note">CMSC 197 · Borces, Del Rosario, Lansoy</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="chat-header">
+        <button class="icon-btn" id="menu-btn" type="button" aria-label="Toggle conversations" title="Toggle conversations">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM9.5 5v14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="chat-title">
+          <h1 id="chat-title">New chat</h1>
+          <p id="chat-sub">Filipino recipe assistant</p>
+        </div>
+        <span class="model-pill" id="model-pill" title="Answer engine"><span class="dot"></span> llama3.2:3b</span>
+      </header>
+
+      <div class="chat-scroll" id="chat-scroll">
+        <div class="chat">
+          <section class="welcome" id="welcome">
+            <div class="welcome-mark" aria-hidden="true">
+              <img src="/static/rat-pizza.png" alt="">
+            </div>
+            <p class="welcome-kicker">Pinoy Recipe RAG</p>
+            <h2>Ano'ng luto natin?</h2>
+            <p class="welcome-lede">
+              Tell me what's in your kitchen — English, Tagalog, or Taglish — and
+              I'll find a Filipino recipe you can cook right now. Then ask follow-ups.
+            </p>
+            <div class="starter-grid" id="starters"></div>
+          </section>
+
+          <div class="messages" id="messages" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div class="composer-area">
+        <div class="setup-banner" id="setup-banner" hidden></div>
+        <form class="composer" id="composer">
+          <label class="sr-only" for="input">Message</label>
+          <textarea id="input" rows="1" placeholder="What's in your kitchen? e.g. may sitaw, bawang, at manok ako"></textarea>
+          <button class="send" id="send" type="submit" aria-label="Send message">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </form>
+        <p class="composer-hint">Enter to send · Shift + Enter for a new line</p>
+      </div>
+    </main>
+
+    <aside class="recipe-panel" id="recipe-panel" hidden aria-label="Recipe details">
+      <div class="panel-bar">
+        <span class="panel-label">Recipe</span>
+        <div class="panel-actions">
+          <button class="icon-btn" id="expand-recipe" type="button" title="Expand to a pop-up" aria-label="Expand recipe">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn" id="close-panel" type="button" title="Close" aria-label="Close recipe panel">×</button>
+        </div>
+      </div>
+      <div class="panel-body" id="panel-body"></div>
+    </aside>
+  </div>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-backdrop" id="modal-backdrop"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Recipe details">
+      <div class="panel-bar">
+        <span class="panel-label">Recipe</span>
+        <div class="panel-actions">
+          <button class="dock-btn" id="dock-recipe" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM15 5v14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+            <span class="dock-label">Open in side panel</span>
+          </button>
+          <button class="icon-btn" id="close-modal" type="button" aria-label="Close recipe">×</button>
+        </div>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim" hidden></div>
+
+  <noscript>
+    <p class="noscript">This interface needs JavaScript enabled.</p>
+  </noscript>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

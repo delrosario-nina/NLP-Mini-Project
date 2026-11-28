@@ -198,6 +198,11 @@ MAIN_INGREDIENTS = {
     "pork", "pork belly", "pork hock", "ground pork", "chicken", "chicken breast",
     "chicken thigh", "beef", "fish", "tilapia", "bangus", "shrimp", "squid",
     "milkfish", "egg", "tofu", "eggplant", "pork adobo", "leftover pork adobo",
+    # Fish varieties and other mains added with the 2026-11 alias-map expansion.
+    "pompano", "galunggong", "tulingan", "tanigue", "sardines", "dried fish",
+    "tinapa flakes", "salmon", "tuna", "lapu lapu", "clams", "mussel", "crab",
+    "anchovy", "goat meat", "corned beef", "hotdog", "liver", "bacon", "ham",
+    "lechon", "longganisa", "pork ribs", "pork shoulder", "pork loin",
 }
 
 

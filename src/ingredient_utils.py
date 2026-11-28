@@ -105,6 +105,30 @@ def _variants(token):
     return out
 
 
+def parse_query(query: str, lookup: dict) -> tuple[list[str], list[str]]:
+    """Split raw pantry text (English, Tagalog, Taglish) into parts and
+    normalize each: "may sitaw, bawang, at manok ako"
+        -> (["string beans", "garlic", "chicken"], ["may", "ako"])
+
+    Splits on commas/semicolons/newlines and the Taglish connectors "at"/"and",
+    then runs each part through normalize_text. This is the query-side
+    counterpart of line_to_phrases/match_canonicals and belongs with them.
+    """
+    parts = re.split(r"[,;\n]|\bat\b|\band\b", str(query), flags=re.IGNORECASE)
+    canonicals: list[str] = []
+    unmapped: list[str] = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        found, left = normalize_text(part, lookup)
+        for item in found:
+            if item not in canonicals:
+                canonicals.append(item)
+        unmapped.extend(left)
+    return canonicals, unmapped
+
+
 def match_canonicals(phrase, lookup, max_n=6):
     """Greedy longest-match of known terms inside a phrase.
 

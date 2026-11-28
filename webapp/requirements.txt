@@ -1,0 +1,9 @@
+# Web interface dependencies.
+# The RAG stack itself (ollama, sentence-transformers, pandas, numpy) is in the
+# root requirements.txt. These are the extras the interface needs.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+
+# Used by notebooks/04_rag_pipeline.ipynb but missing from the root file.
+rank_bm25>=0.2.2
+pyarrow>=15
